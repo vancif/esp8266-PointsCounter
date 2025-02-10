@@ -12,6 +12,7 @@ ESP8266-based score tracker with an I2C LCD and web interface for managing playe
 - **Physical Buttons**: Controls for incrementing, decrementing, and navigating scores.
 - **Wi-Fi Connectivity**: Connects to a predefined Wi-Fi network or creates an access point if no network is available.
 - **mDNS Support**: Access the web interface via `http://MagicPoints.local`.
+- **Save/Load** player's names and point to/from Flash Memory
 
 ## Hardware Requirements
 
@@ -71,9 +72,6 @@ ESP8266-based score tracker with an I2C LCD and web interface for managing playe
 | **ENT (Long Press D8)** | Select an option |
 | **OPT (Press both + and -** | Access Utils menu |
 
-## License
-
-This project is open-source under the MIT License.
 
 ---
 
