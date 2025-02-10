@@ -5,6 +5,7 @@
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
+#include <EEPROM.h>
 
 
 // ******************* GLOBAL VARIABLES AND STATICS ****************************
@@ -15,13 +16,11 @@ IPAddress myIP;
 
 ESP8266WebServer server(80);  // Create a webserver object that listens for HTTP request on port 80
 
-// function prototypes for HTTP handlers
-void handleRoot();
+void handleRoot();  // function prototypes for HTTP handlers
 void handleNotFound();
 void handleToggle();
 
-// Set the LCD address to 0x27 for a 20 chars and 4 line display
-LiquidCrystal_I2C lcd(0x27, 20, 4);
+LiquidCrystal_I2C lcd(0x27, 20, 4);  // Set the LCD address to 0x27 for a 20 chars and 4 line display
 
 // custom char °
 static byte grade[8] = {
@@ -71,8 +70,11 @@ static byte hourglass[8] = {
 #define LED_ON digitalWrite(LED_BUILTIN, LOW);
 #define LED_OFF digitalWrite(LED_BUILTIN, HIGH);
 
-#define AP_NAME "Custom_AP_name"
-#define AP_PWD "Custom_AP_pwd"
+#define AP_NAME "fallback_AP_name"
+#define AP_PWD "fallback_AP_pwd"
+
+#define EEPROM_SIZE 512  // Dimensione massima della EEPROM
+#define NAME_LENGTH 6    // Lunghezza massima del nome del giocatore
 
 char line[4][21];
 
@@ -116,12 +118,70 @@ template<typename T> const T getArrayElement(T* x,int pos = 0, int length = 0){
 }
 
 
+void saveData() {
+  uint8_t addr = 0;  // Indirizzo iniziale EEPROM
+
+  char nameBuffer[6];
+
+  // Salvataggio dei nomi
+  for (uint8_t i = 0; i < 4; i++) {
+    playerName[i].toCharArray(nameBuffer, NAME_LENGTH);
+    EEPROM.put(addr, nameBuffer);  // Scrive il nome come array di caratteri
+    addr += NAME_LENGTH;   // Sposta l'indirizzo per il prossimo nome
+  }
+
+  // Salvataggio dei punteggi
+  for (uint8_t i = 0; i < 4; i++) {
+    for (uint8_t j = 0; j < 4; j++) {
+      EEPROM.put(addr, playerPoints[i][j]);  // Scrive il punteggio
+      addr += sizeof(uint8_t);   // Sposta l'indirizzo di 1 byte
+    }
+  }
+
+  // scrittura numero giocatori
+  EEPROM.put(addr,numPlayers);
+
+  EEPROM.commit();  // Salva i dati nella memoria flash
+  Serial.println("Dati salvati nella EEPROM!");
+}
+
+void loadData() {
+  int addr = 0;  // Indirizzo iniziale EEPROM
+
+  char nameBuffer[6];
+
+  // Lettura dei nomi
+  for (uint8_t i = 0; i < 4; i++) {
+    EEPROM.get(addr, nameBuffer);  // Legge il nome
+    playerName[i] = String(nameBuffer);
+    addr += NAME_LENGTH;
+  }
+  
+
+  // Lettura dei punteggi
+  for (uint8_t i = 0; i < 4; i++) {
+    for (uint8_t j = 0; j < 4; j++) {
+      EEPROM.get(addr, playerPoints[i][j]);  // Legge il punteggio
+      addr += sizeof(uint8_t);
+    }
+  }
+
+  // lettura numero giocatori
+  EEPROM.get(addr,numPlayers);
+
+  Serial.println("Dati caricati dalla EEPROM!");
+}
+
+
 // ******************************* SETUP ***************************************
 
 void setup() {
   //init LED
   pinMode(LED_BUILTIN, OUTPUT);
   LED_OFF
+
+  // Inizializza EEPROM
+  EEPROM.begin(EEPROM_SIZE);
 
   //init display
   lcd.begin(D2, D1);
@@ -188,7 +248,7 @@ void setup() {
     lcd.setCursor(0, 3);
     lcd.print("mDNS setup.         ");
 
-    if (MDNS.begin("MagicPoints")) {  // Start the mDNS responder for bme280.local
+    if (MDNS.begin("MagicPoints")) {  // Start the mDNS responder for MagicPoints.local
       Serial.println("mDNS responder started");
     } else {
       Serial.println("Error setting up MDNS responder!");
@@ -322,8 +382,8 @@ void loop() {
 
   // *************** UTILS DISPLAY *******************
   } else if (displayState == "utils"){
-    sprintf(line[0]," Die Roll           ");
-    sprintf(line[1]," Reset 20           ");
+    sprintf(line[0]," Die Roll      SAVE ");
+    sprintf(line[1]," Reset 20      LOAD ");
     sprintf(line[2]," Reset 40           ");
     sprintf(line[3],"        BACK        ");
       switch (activeAction_Utils){
@@ -333,7 +393,12 @@ void loop() {
         break;
         case 2: line[2][0] = 2;
         break;
-        case 3: line[3][12] = 1;
+        case 3: line[0][19] = 1;
+        break;
+        case 4: line[1][19] = 1;
+        break;
+        case 5: line[3][12] = 1;
+        break;
       }
   }
   
@@ -361,8 +426,11 @@ void handleRoot() {
   <br>\
   <button id=bp onclick=\"operate('1')\" style=\"width:75px;height:75px;font:15pt Arial;\">+</button>\
   <button id=bm onclick=\"operate('2')\"style=\"width:75px;height:75px;font:15pt Arial;\">-</button>\
+  <br>\
+  <br>\
   <button id=bc onclick=\"operate('3')\"style=\"width:75px;height:75px;font:15pt Arial;\">CH</button>\
   <button id=be onclick=\"operate('4')\"style=\"width:75px;height:75px;font:15pt Arial;\">ENT</button>\
+  <button id=bo onclick=\"operate('5')\"style=\"width:75px;height:75px;font:15pt Arial;\">OPT</button>\
   <script>\
   function operate(act){\
     window.navigator.vibrate(100);\
@@ -406,7 +474,7 @@ void handleAction() {
     for (uint8_t i = 0; i<4; i++){
       String argN = "n" + String(i);
       String argP = "p" + String(i);
-      Serial.print("plater name: ");
+      Serial.print("player name: ");
       Serial.println(server.arg(argN));
       if (server.arg(argN) != "") numPlayers++;
       playerName[i] = server.arg(argN);
@@ -420,6 +488,7 @@ void handleAction() {
       case 2: tastoMENO(); break;
       case 3: tastoCH(); break;
       case 4: tastoENT(); break;
+      case 5: tastoOPT(); break;
     }
   }
 
@@ -453,7 +522,7 @@ void tastoCH(){
   } else if (displayState == "utils"){
 
     activeAction_Utils++;
-    if (activeAction_Utils > 3) activeAction_Utils = 0;
+    if (activeAction_Utils > 5) activeAction_Utils = 0;
 
   }
   delay(BUTTON_DELAY);
@@ -497,6 +566,7 @@ void tastoENT(){
           playerPoints[i][j] = 0;
         }
       }
+      activeAction_Main = 0;
       break;
       case 2:
       for (uint8_t i = 0; i<4; i++){
@@ -505,8 +575,13 @@ void tastoENT(){
           playerPoints[i][j] = 0;
         }
       }
+      activeAction_Main = 0;
       break;
-      case 3:
+      case 3: saveData(); activeAction_Main = 0;
+      break;
+      case 4: loadData(); activeAction_Main = 0;
+      break;
+      case 5:
       break;
     }
     displayState = "main";
