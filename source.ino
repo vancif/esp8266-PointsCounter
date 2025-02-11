@@ -8,19 +8,36 @@
 #include <EEPROM.h>
 
 
+// ************************* GLOBAL CONFIGURATION ******************************
+
+
+#define AP_NAME "Fallback_AP_SSID"
+#define AP_PWD "Fallback_AP_PWD"
+
+#define SSID_AP_1 "AP_1_SSID"
+#define PWD_AP_1 "AP_1_PWD"
+
+#define LONG_PRESS_TIME  350
+#define BUTTON_DELAY 150
+
+
 // ******************* GLOBAL VARIABLES AND STATICS ****************************
 
-ESP8266WiFiMulti wifiMulti;  // Create an instance of the ESP8266WiFiMulti class, called 'wifiMulti'
+// Create an instance of the ESP8266WiFiMulti class, called 'wifiMulti'
+ESP8266WiFiMulti wifiMulti;
 
 IPAddress myIP;
 
-ESP8266WebServer server(80);  // Create a webserver object that listens for HTTP request on port 80
+// Create a webserver object that listens for HTTP request on port 80
+ESP8266WebServer server(80);
 
-void handleRoot();  // function prototypes for HTTP handlers
+// function prototypes for HTTP handlers
+void handleRoot();
 void handleNotFound();
 void handleToggle();
 
-LiquidCrystal_I2C lcd(0x27, 20, 4);  // Set the LCD address to 0x27 for a 20 chars and 4 line display
+// Set the LCD address to 0x27 for a 20 chars and 4 line display
+LiquidCrystal_I2C lcd(0x27, 20, 4);  
 
 // custom char °
 static byte grade[8] = {
@@ -70,11 +87,8 @@ static byte hourglass[8] = {
 #define LED_ON digitalWrite(LED_BUILTIN, LOW);
 #define LED_OFF digitalWrite(LED_BUILTIN, HIGH);
 
-#define AP_NAME "fallback_AP_name"
-#define AP_PWD "fallback_AP_pwd"
-
-#define EEPROM_SIZE 512  // Dimensione massima della EEPROM
-#define NAME_LENGTH 6    // Lunghezza massima del nome del giocatore
+#define EEPROM_SIZE 512  // max EEPROM size
+#define NAME_LENGTH 6    // Player's name max length
 
 char line[4][21];
 
@@ -90,10 +104,6 @@ uint8_t activeAction_Utils = 0;
 
 String displayState = "null";
 
-#define LONG_PRESS_TIME  500
-#define BUTTON_DELAY 150
-
-// Variables will change:
 int lastState = LOW;  // the previous state from the input pin
 int currentState;     // the current reading from the input pin
 unsigned long pressedTime  = 0;
@@ -119,18 +129,22 @@ template<typename T> const T getArrayElement(T* x,int pos = 0, int length = 0){
 
 
 void saveData() {
-  uint8_t addr = 0;  // Indirizzo iniziale EEPROM
+  uint8_t addr = 0;  // EEPROM starting address
 
-  char nameBuffer[6];
+  char nameBuffer[NAME_LENGTH+1];
 
-  // Salvataggio dei nomi
+  // Players' name write
   for (uint8_t i = 0; i < 4; i++) {
-    playerName[i].toCharArray(nameBuffer, NAME_LENGTH);
+    playerName[i].toCharArray(nameBuffer, NAME_LENGTH+1);
+    Serial.print("Player ");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.println(nameBuffer);
     EEPROM.put(addr, nameBuffer);  // Scrive il nome come array di caratteri
-    addr += NAME_LENGTH;   // Sposta l'indirizzo per il prossimo nome
+    addr += NAME_LENGTH+1;   // Sposta l'indirizzo per il prossimo nome
   }
 
-  // Salvataggio dei punteggi
+  // Points write
   for (uint8_t i = 0; i < 4; i++) {
     for (uint8_t j = 0; j < 4; j++) {
       EEPROM.put(addr, playerPoints[i][j]);  // Scrive il punteggio
@@ -138,38 +152,42 @@ void saveData() {
     }
   }
 
-  // scrittura numero giocatori
+  // numPlayers write
   EEPROM.put(addr,numPlayers);
 
-  EEPROM.commit();  // Salva i dati nella memoria flash
-  Serial.println("Dati salvati nella EEPROM!");
+  EEPROM.commit();
+  Serial.println("Data saved to EEPROM!");
 }
 
 void loadData() {
-  int addr = 0;  // Indirizzo iniziale EEPROM
+  int addr = 0;  // EEPROM starting address
 
-  char nameBuffer[6];
+  char nameBuffer[NAME_LENGTH+1];
 
-  // Lettura dei nomi
+  // names read
   for (uint8_t i = 0; i < 4; i++) {
-    EEPROM.get(addr, nameBuffer);  // Legge il nome
+    EEPROM.get(addr, nameBuffer);
     playerName[i] = String(nameBuffer);
-    addr += NAME_LENGTH;
+    Serial.print("EEPROM Player ");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.println(nameBuffer);
+    addr += NAME_LENGTH+1;
   }
   
 
-  // Lettura dei punteggi
+  // points read
   for (uint8_t i = 0; i < 4; i++) {
     for (uint8_t j = 0; j < 4; j++) {
-      EEPROM.get(addr, playerPoints[i][j]);  // Legge il punteggio
+      EEPROM.get(addr, playerPoints[i][j]);
       addr += sizeof(uint8_t);
     }
   }
 
-  // lettura numero giocatori
+  // numPlayers read
   EEPROM.get(addr,numPlayers);
 
-  Serial.println("Dati caricati dalla EEPROM!");
+  Serial.println("Data loaded from EEPROM!");
 }
 
 
@@ -209,6 +227,8 @@ void setup() {
   pinMode(D6, INPUT);
   pinMode(D8, INPUT);
 
+  //pinMode(A0, INPUT);
+
   //serial setup
   lcd.setCursor(0, 3);
   lcd.print("Serial setup        ");
@@ -222,7 +242,7 @@ void setup() {
   Serial.println("Wifi Connecting ...");
 
   // add Wi-Fi networks you want to connect to
-  wifiMulti.addAP("ssid_from_AP_1", "your_password_for_AP_1");
+  wifiMulti.addAP(SSID_AP_1, PWD_AP_1);
   //wifiMulti.addAP("ssid_from_AP_2", "your_password_for_AP_2");
   //wifiMulti.addAP("ssid_from_AP_3", "your_password_for_AP_3");
 
