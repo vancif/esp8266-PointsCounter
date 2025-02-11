@@ -567,7 +567,7 @@ void tastoENT(){
   else if (displayState == "main") {
     if (activeAction_Main <= 3) {
       displayState = "detail";
-      activeAction_Detail = 0;
+      activeAction_Detail = 1;
     } else if (activeAction_Main == 4){
       displayState = "utils";
       activeAction_Utils = 0;
