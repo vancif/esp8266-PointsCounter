@@ -387,11 +387,9 @@ void loop() {
 
     sprintf(line[2],"%6s: %2i          ",getArrayElement(playerName,activeAction_Main+2,4),playerPoints[activeAction_Main][2]);
 
-    sprintf(line[3],"%6s: %2i    BACK  ",getArrayElement(playerName,activeAction_Main+3,4),playerPoints[activeAction_Main][3]);
+    sprintf(line[3],"%6s: %2i          ",getArrayElement(playerName,activeAction_Main+3,4),playerPoints[activeAction_Main][3]);
 
       switch (activeAction_Detail){
-        case 0: line[3][18] = 1;
-        break;
         case 1: line[1][11] = 1;
         break;
         case 2: line[2][11] = 1;
@@ -537,7 +535,7 @@ void tastoCH(){
   } else if (displayState == "detail"){
 
     activeAction_Detail++;
-    if (activeAction_Detail > 3) activeAction_Detail = 0;
+    if (activeAction_Detail > 3) activeAction_Detail = 1;
 
   } else if (displayState == "utils"){
 
