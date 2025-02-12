@@ -576,6 +576,7 @@ void tastoENT(){
     switch (activeAction_Utils) {
       case 0:
       randomizeStart = true;
+      activeAction_Main = 0;
       break;
       case 1:
       for (uint8_t i = 0; i<4; i++){
