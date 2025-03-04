@@ -291,6 +291,12 @@ void setup() {
     WiFi.softAP(AP_NAME,AP_PWD,1,0);
     myIP = WiFi.softAPIP();
     sprintf(line[0],"Connect to this wifi");
+    lcd.setCursor(0, 1);
+    lcd.print("                    ");
+    lcd.setCursor(0, 2);
+    lcd.print("                    ");
+    sprintf(line[2],"                    ");
+    sprintf(line[3],"                    ");
     sprintf(line[1],AP_NAME);
     sprintf(line[2],AP_PWD);
     sprintf(line[3],"%20s",myIP.toString().c_str());
