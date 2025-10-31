@@ -203,7 +203,7 @@ void setup() {
   EEPROM.begin(EEPROM_SIZE);
 
   //init display
-  lcd.begin(D2, D1);
+  lcd.init();
   lcd.backlight();
   lcd.createChar(0, grade);
   lcd.createChar(1, leftarrow);
