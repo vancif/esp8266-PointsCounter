@@ -14,8 +14,8 @@
 #define AP_NAME "Fallback_AP_SSID"
 #define AP_PWD "Fallback_AP_PWD"
 
-#define SSID_AP_1 "AP_1_SSID"
-#define PWD_AP_1 "AP_1_PWD"
+#define SSID_AP_1 "SSID_AP_1"
+#define PWD_AP_1 "PWD_AP_1"
 
 #define LONG_PRESS_TIME  350
 #define BUTTON_DELAY 150
@@ -102,6 +102,7 @@ uint8_t numPlayers = 0;
 uint8_t activeAction_Main = 0;
 uint8_t activeAction_Detail = 0;
 uint8_t activeAction_Utils = 0;
+uint8_t activeAction_Clock = 0;
 
 String displayState = "null";
 
@@ -111,6 +112,12 @@ unsigned long pressedTime  = 0;
 unsigned long releasedTime = 0;
 
 bool randomizeStart = false;
+
+unsigned long p1_start_time = 0;
+unsigned long p1_time = 0;
+unsigned long p2_start_time = 0;
+unsigned long p2_time = 0;
+bool clockPaused = true;
 
 
 // ************************ utilities *******************************
@@ -409,7 +416,7 @@ void loop() {
   } else if (displayState == "utils"){
     sprintf(line[0]," Die Roll      SAVE ");
     sprintf(line[1]," Reset 20      LOAD ");
-    sprintf(line[2]," Reset 40           ");
+    sprintf(line[2]," Reset 40     CLOCK ");
     sprintf(line[3],"        BACK        ");
       switch (activeAction_Utils){
         case 0: line[0][0] = 2;
@@ -422,9 +429,49 @@ void loop() {
         break;
         case 4: line[1][19] = 1;
         break;
-        case 5: line[3][12] = 1;
+        case 5: line[2][19] = 1;
+        break;
+        case 6: line[3][12] = 1;
         break;
       }
+
+  // *************** CLOCK DISPLAY ***************
+  } else if (displayState == "clock"){
+
+    unsigned long now = millis();
+
+    if (!clockPaused) {
+      switch (activeAction_Clock){
+        case 0:
+        break;
+        case 1:     
+          if (p1_start_time == 0) {
+            p1_start_time = millis()-BUTTON_DELAY;
+          } else {
+            p1_time += (now - p1_start_time);
+            p1_start_time = millis();
+          }
+        break;
+        case 2:
+          if (p2_start_time == 0) {
+              p2_start_time = millis()-BUTTON_DELAY;
+            } else {
+              p2_time += (now - p2_start_time);
+              p2_start_time = millis();
+            }
+        break;
+      }
+    }
+
+    sprintf(line[0],"       CLOCK        ");
+    sprintf(line[1],"P1 %02i:%02i    P2 %02i:%02i",p1_time/60000,(p1_time%60000)/1000,p2_time/60000,(p2_time%60000)/1000);
+    sprintf(line[2],"    Total  %02i:%02i    ",(p1_time+p2_time)/60000,(p1_time+p2_time)%60000/1000);
+    sprintf(line[3],"        BACK        ");
+    switch (activeAction_Clock){
+      case 1: line[1][8] = 1; break;
+      case 2: line[1][11] = 2; break;
+    }
+    if (clockPaused) line[0][19] = 3;
   }
   
   printLines();
@@ -547,8 +594,22 @@ void tastoCH(){
   } else if (displayState == "utils"){
 
     activeAction_Utils++;
-    if (activeAction_Utils > 5) activeAction_Utils = 0;
+    if (activeAction_Utils > 6) activeAction_Utils = 0;
 
+  } else if (displayState == "clock"){
+    clockPaused = !clockPaused;
+    if (!clockPaused) {
+      switch (activeAction_Clock)
+      {
+      case 1:
+        p1_start_time = millis();
+        break;
+      
+      case 2:
+        p2_start_time = millis();
+        break;
+      }
+    }
   }
   delay(BUTTON_DELAY);
 }
@@ -584,6 +645,7 @@ void tastoENT(){
       case 0:
       randomizeStart = true;
       activeAction_Main = 0;
+      displayState = "main";
       break;
       case 1:
       for (uint8_t i = 0; i<4; i++){
@@ -593,6 +655,7 @@ void tastoENT(){
         }
       }
       activeAction_Main = 0;
+      displayState = "main";
       break;
       case 2:
       for (uint8_t i = 0; i<4; i++){
@@ -602,15 +665,19 @@ void tastoENT(){
         }
       }
       activeAction_Main = 0;
+      displayState = "main";
       break;
-      case 3: saveData(); activeAction_Main = 0;
+      case 3: saveData(); activeAction_Main = 0; displayState = "main";
       break;
-      case 4: loadData(); activeAction_Main = 0;
+      case 4: loadData(); activeAction_Main = 0; displayState = "main";
       break;
-      case 5:
+      case 5: activeAction_Clock = 0; displayState = "clock";
+      break;
+      case 6: displayState = "main";
       break;
     }
-    displayState = "main";
+  } else if (displayState == "clock"){
+    activeAction_Main = 0; displayState = "main";
   }
   // delay not really necessary as this button work "onButtonRelease"
   // delay(BUTTON_DELAY);
@@ -622,6 +689,14 @@ void tastoPIU(){
   else if (displayState == "detail" && activeAction_Detail > 0) {
     playerPoints[activeAction_Main][activeAction_Detail]++;
     playerPoints[activeAction_Main][0]--;
+  } else if (displayState == "clock") {
+    activeAction_Clock++;
+    if (activeAction_Clock > 2) activeAction_Clock = 1;
+    if (activeAction_Clock == 1){
+      p2_start_time = 0;
+    } else if (activeAction_Clock == 2){
+      p1_start_time = 0;
+    }
   }
   delay(BUTTON_DELAY);
 }
@@ -632,6 +707,14 @@ void tastoMENO(){
   else if (displayState == "detail" && activeAction_Detail > 0) {
     playerPoints[activeAction_Main][activeAction_Detail]--;
     playerPoints[activeAction_Main][0]++;
+  } else if (displayState == "clock") {
+    activeAction_Clock++;
+    if (activeAction_Clock > 2) activeAction_Clock = 1;
+    if (activeAction_Clock == 1){
+      p2_start_time = 0;
+    } else if (activeAction_Clock == 2){
+      p1_start_time = 0;
+    }
   }
   delay(BUTTON_DELAY);
 }
@@ -641,6 +724,13 @@ void tastoOPT(){
   if (displayState == "main") {
     if (activeAction_Main != 4) activeAction_Main = 4;
     else activeAction_Main = 0;
+  } else if (displayState == "clock") {
+    // reset clock
+    p1_start_time = 0;
+    p1_time = 0;
+    p2_start_time = 0;
+    p2_time = 0;
+    clockPaused = true;
   }
     
 }
