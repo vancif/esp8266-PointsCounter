@@ -17,6 +17,7 @@
 #define MAX_WIFI_NETWORKS 3
 #define WIFI_SSID_LENGTH 32
 #define WIFI_PWD_LENGTH 32
+#define WIFI_TIMEOUT 15000 // 15 seconds
 
 // Button Configuration
 #define LONG_PRESS_TIME 350
@@ -613,7 +614,6 @@ void initializeWiFi() {
   }
   
   unsigned long wifiStartTime = millis();
-  const unsigned long WIFI_TIMEOUT = 15000; // 15 seconds
   bool wifiConnected = false;
   
   // Attempt to connect to WiFi if we have networks
