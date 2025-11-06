@@ -111,12 +111,11 @@ Boot Screen → Connection Screen → Main Game View
 
 ## Data Storage
 
-The system automatically stores:
-- Player names and points
-- WiFi network configurations  
-- Game state persistence across power cycles
+The system stores data in EEPROM memory:
+- **WiFi network configurations**: Automatically saved and loaded on startup  
+- **Game data** (player names and points): Manual save/load only via **Utils Menu → SAVE/LOAD**
 
-Access via **Utils Menu → SAVE/LOAD** to manually manage game states.
+**Note**: Game progress is not automatically saved during play - use the manual SAVE function to preserve your current game state.
 
 ---
 
