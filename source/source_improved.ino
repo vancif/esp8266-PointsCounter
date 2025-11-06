@@ -12,10 +12,11 @@
 #define LOOP_DELAY 25  // milliseconds
 
 // WiFi Configuration
-#define AP_NAME "Fallback_AP_SSID"
-#define AP_PWD "Fallback_AP_PWD"
-#define SSID_AP_1 "SSID_AP_1"
-#define PWD_AP_1 "PWD_AP_1"
+#define AP_NAME "Points_Setup"
+#define AP_PWD "Points123"
+#define MAX_WIFI_NETWORKS 3
+#define WIFI_SSID_LENGTH 32
+#define WIFI_PWD_LENGTH 32
 
 // Button Configuration
 #define LONG_PRESS_TIME 350
@@ -35,6 +36,9 @@
 #define MAX_PLAYERS 4
 #define NAME_LENGTH 6
 #define EEPROM_SIZE 512
+
+// WiFi Storage Configuration
+#define WIFI_EEPROM_START 256  // Start WiFi config after game data
 
 // LED Control
 #define LED_ON digitalWrite(LED_BUILTIN, LOW)
@@ -56,12 +60,23 @@ enum DisplayState {
   STATE_CLOCK
 };
 
+// ************************* STRUCTS ******************************
+
+struct WiFiConfig {
+  char ssid[WIFI_SSID_LENGTH + 1];
+  char password[WIFI_PWD_LENGTH + 1];
+  bool active;
+};
+
 // ******************* GLOBAL VARIABLES ****************************
 
 // Network components
 ESP8266WiFiMulti wifiMulti;
 ESP8266WebServer server(80);
 IPAddress myIP;
+WiFiConfig wifiConfigs[MAX_WIFI_NETWORKS];
+uint8_t numWifiConfigs = 0;
+bool isConfigMode = false;
 
 // Display components
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
@@ -107,10 +122,11 @@ const byte customChars[4][8] PROGMEM = {
 
 // ************************* HTML STORED IN PROGMEM ******************************
 
-const char HTML_PAGE[] PROGMEM = R"rawliteral(
+const char GAME_HTML_PAGE[] PROGMEM = R"rawliteral(
 <html>
 <head><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
 <body>
+<h2>Points Counter Game</h2>
 <input maxlength="6" size="10" type="text" id="n0"><input maxlength="2" size="3" type="text" id="p0"><br><br>
 <input maxlength="6" size="10" type="text" id="n1"><input maxlength="2" size="3" type="text" id="p1"><br><br>
 <input maxlength="6" size="10" type="text" id="n2"><input maxlength="2" size="3" type="text" id="p2"><br><br>
@@ -120,7 +136,8 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 <button onclick="operate('2')" style="width:75px;height:75px;font:15pt Arial;">-</button><br><br>
 <button onclick="operate('3')" style="width:75px;height:75px;font:15pt Arial;">CH</button>
 <button onclick="operate('4')" style="width:75px;height:75px;font:15pt Arial;">ENT</button>
-<button onclick="operate('5')" style="width:75px;height:75px;font:15pt Arial;">OPT</button>
+<button onclick="operate('5')" style="width:75px;height:75px;font:15pt Arial;">OPT</button><br><br>
+<a href="/wifi">WiFi Settings</a>
 <script>
 function operate(act){
   if(window.navigator.vibrate) window.navigator.vibrate(100);
@@ -139,6 +156,128 @@ function send(){
   }
   fetch("/update", {method: "POST", body: data});
 }
+</script>
+</body>
+</html>
+)rawliteral";
+
+const char WIFI_HTML_PAGE[] PROGMEM = R"rawliteral(
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WiFi Configuration</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .wifi-item { background: #f0f0f0; margin: 10px 0; padding: 10px; border-radius: 5px; }
+    .wifi-form { background: #e0e0e0; padding: 15px; border-radius: 5px; margin: 20px 0; }
+    input[type="text"], input[type="password"] { width: 200px; padding: 5px; margin: 5px; }
+    button { padding: 10px 15px; margin: 5px; }
+    .delete-btn { background: #ff4444; color: white; }
+  </style>
+</head>
+<body>
+<h2>WiFi Configuration</h2>
+
+<div id="savedNetworks">
+  <h3>Saved Networks:</h3>
+  <!-- Networks will be populated here -->
+</div>
+
+<div class="wifi-form">
+  <h3>Add New Network:</h3>
+  <form id="wifiForm">
+    <label>SSID:</label><br>
+    <input type="text" id="newSsid" name="ssid" maxlength="32" required><br>
+    <label>Password:</label><br>
+    <input type="password" id="newPassword" name="password" maxlength="32"><br><br>
+    <button type="submit">Add Network</button>
+  </form>
+</div>
+
+<div>
+  <button onclick="window.location.href='/'">Back to Game</button>
+  <button onclick="reboot()">Reboot Device</button>
+</div>
+
+<script>
+// Load saved networks
+function loadNetworks() {
+  fetch('/wifi/list')
+    .then(response => response.json())
+    .then(data => {
+      const container = document.getElementById('savedNetworks');
+      let html = '<h3>Saved Networks:</h3>';
+      
+      if (data.networks && data.networks.length > 0) {
+        data.networks.forEach((network, index) => {
+          html += `
+            <div class="wifi-item">
+              <strong>${network.ssid}</strong>
+              <button class="delete-btn" onclick="deleteNetwork(${index})">Delete</button>
+            </div>`;
+        });
+      } else {
+        html += '<p>No networks saved</p>';
+      }
+      container.innerHTML = html;
+    });
+}
+
+// Add new network
+document.getElementById('wifiForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const ssid = document.getElementById('newSsid').value;
+  const password = document.getElementById('newPassword').value;
+  
+  const data = new FormData();
+  data.append('ssid', ssid);
+  data.append('password', password);
+  
+  fetch('/wifi/add', {method: 'POST', body: data})
+    .then(response => response.json())
+    .then(result => {
+      if (result.success) {
+        document.getElementById('newSsid').value = '';
+        document.getElementById('newPassword').value = '';
+        loadNetworks();
+        alert('Network added successfully!');
+      } else {
+        alert('Error: ' + result.message);
+      }
+    });
+});
+
+// Delete network
+function deleteNetwork(index) {
+  if (confirm('Are you sure you want to delete this network?')) {
+    const data = new FormData();
+    data.append('index', index);
+    
+    fetch('/wifi/delete', {method: 'POST', body: data})
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
+          loadNetworks();
+          alert('Network deleted successfully!');
+        } else {
+          alert('Error: ' + result.message);
+        }
+      });
+  }
+}
+
+// Reboot device
+function reboot() {
+  if (confirm('Are you sure you want to reboot the device?')) {
+    fetch('/reboot', {method: 'POST'})
+      .then(() => {
+        alert('Device rebooting... Please wait and reconnect.');
+      });
+  }
+}
+
+// Load networks on page load
+loadNetworks();
 </script>
 </body>
 </html>
@@ -167,10 +306,20 @@ void updateClockDisplay();
 void saveData();
 void loadData();
 bool validateEEPROMData();
+void saveWiFiConfig();
+void loadWiFiConfig();
+bool validateWiFiEEPROMData();
+void addWiFiNetwork(const String& ssid, const String& password);
+void deleteWiFiNetwork(uint8_t index);
 
 // Web handlers
 void handleRoot();
 void handleAction();
+void handleWiFiConfig();
+void handleWiFiList();
+void handleWiFiAdd();
+void handleWiFiDelete();
+void handleReboot();
 void handleNotFound();
 
 // Button actions
@@ -282,6 +431,113 @@ bool validateEEPROMData() {
   return magic == 0xFEDE;
 }
 
+void saveWiFiConfig() {
+  uint16_t addr = WIFI_EEPROM_START;
+  
+  // Save magic number for WiFi validation
+  uint16_t wifiMagic = 0xC0DE;
+  EEPROM.put(addr, wifiMagic);
+  addr += sizeof(wifiMagic);
+  
+  // Save number of WiFi configs
+  EEPROM.put(addr, numWifiConfigs);
+  addr += sizeof(numWifiConfigs);
+  
+  // Save WiFi configurations
+  for (uint8_t i = 0; i < MAX_WIFI_NETWORKS; i++) {
+    EEPROM.put(addr, wifiConfigs[i]);
+    addr += sizeof(WiFiConfig);
+  }
+  
+  EEPROM.commit();
+  Serial.println(F("WiFi config saved to EEPROM!"));
+}
+
+void loadWiFiConfig() {
+  if (!validateWiFiEEPROMData()) {
+    Serial.println(F("Invalid WiFi EEPROM data, using defaults"));
+    numWifiConfigs = 0;
+    return;
+  }
+  
+  uint16_t addr = WIFI_EEPROM_START + sizeof(uint16_t); // Skip magic number
+  
+  // Load number of WiFi configs
+  EEPROM.get(addr, numWifiConfigs);
+  addr += sizeof(numWifiConfigs);
+  
+  // Validate numWifiConfigs
+  if (numWifiConfigs > MAX_WIFI_NETWORKS) {
+    numWifiConfigs = MAX_WIFI_NETWORKS;
+  }
+  
+  // Load WiFi configurations
+  for (uint8_t i = 0; i < MAX_WIFI_NETWORKS; i++) {
+    EEPROM.get(addr, wifiConfigs[i]);
+    addr += sizeof(WiFiConfig);
+  }
+  
+  Serial.print(F("WiFi config loaded! Networks: "));
+  Serial.println(numWifiConfigs);
+}
+
+bool validateWiFiEEPROMData() {
+  uint16_t wifiMagic;
+  EEPROM.get(WIFI_EEPROM_START, wifiMagic);
+  return wifiMagic == 0xC0DE;
+}
+
+void addWiFiNetwork(const String& ssid, const String& password) {
+  if (numWifiConfigs >= MAX_WIFI_NETWORKS) {
+    Serial.println(F("Maximum WiFi networks reached"));
+    return;
+  }
+  
+  // Check if SSID already exists
+  for (uint8_t i = 0; i < numWifiConfigs; i++) {
+    if (String(wifiConfigs[i].ssid) == ssid) {
+      // Update existing network
+      strncpy(wifiConfigs[i].password, password.c_str(), WIFI_PWD_LENGTH);
+      wifiConfigs[i].password[WIFI_PWD_LENGTH] = '\0';
+      wifiConfigs[i].active = true;
+      saveWiFiConfig();
+      Serial.println(F("WiFi network updated"));
+      return;
+    }
+  }
+  
+  // Add new network
+  strncpy(wifiConfigs[numWifiConfigs].ssid, ssid.c_str(), WIFI_SSID_LENGTH);
+  wifiConfigs[numWifiConfigs].ssid[WIFI_SSID_LENGTH] = '\0';
+  strncpy(wifiConfigs[numWifiConfigs].password, password.c_str(), WIFI_PWD_LENGTH);
+  wifiConfigs[numWifiConfigs].password[WIFI_PWD_LENGTH] = '\0';
+  wifiConfigs[numWifiConfigs].active = true;
+  
+  numWifiConfigs++;
+  saveWiFiConfig();
+  Serial.println(F("WiFi network added"));
+}
+
+void deleteWiFiNetwork(uint8_t index) {
+  if (index >= numWifiConfigs) {
+    Serial.println(F("Invalid WiFi network index"));
+    return;
+  }
+  
+  // Shift remaining networks down
+  for (uint8_t i = index; i < numWifiConfigs - 1; i++) {
+    wifiConfigs[i] = wifiConfigs[i + 1];
+  }
+  
+  numWifiConfigs--;
+  
+  // Clear the last slot
+  memset(&wifiConfigs[numWifiConfigs], 0, sizeof(WiFiConfig));
+  
+  saveWiFiConfig();
+  Serial.println(F("WiFi network deleted"));
+}
+
 // ************************* HARDWARE INITIALIZATION ******************************
 
 void initializeHardware() {
@@ -334,6 +590,9 @@ void initializeDisplay() {
 
 void initializeWiFi() {
   Serial.println(F("WiFi Connecting..."));
+  
+  // Load WiFi configuration from EEPROM
+  loadWiFiConfig();
 
   // Clear display and show WiFi setup message
   for (uint8_t i = 0; i < LCD_ROWS; i++) {
@@ -342,28 +601,38 @@ void initializeWiFi() {
   snprintf(line[3], LCD_COLS + 1, "WiFi setup...");
   printLines();
   
-  // Add Wi-Fi networks
-  wifiMulti.addAP(SSID_AP_1, PWD_AP_1);
-  // Add more networks as needed:
-  // wifiMulti.addAP("ssid_from_AP_2", "your_password_for_AP_2");
+  // Add saved Wi-Fi networks
+  bool hasNetworks = false;
+  for (uint8_t i = 0; i < numWifiConfigs; i++) {
+    if (wifiConfigs[i].active && strlen(wifiConfigs[i].ssid) > 0) {
+      wifiMulti.addAP(wifiConfigs[i].ssid, wifiConfigs[i].password);
+      hasNetworks = true;
+      Serial.print(F("Added WiFi: "));
+      Serial.println(wifiConfigs[i].ssid);
+    }
+  }
   
   unsigned long wifiStartTime = millis();
-  const unsigned long WIFI_TIMEOUT = 10000; // 10 seconds
+  const unsigned long WIFI_TIMEOUT = 15000; // 15 seconds
   bool wifiConnected = false;
   
-  // Attempt to connect to WiFi
-  while (millis() - wifiStartTime < WIFI_TIMEOUT && !wifiConnected) {
-    if (wifiMulti.run() == WL_CONNECTED) {
-      wifiConnected = true;
-      break;
+  // Attempt to connect to WiFi if we have networks
+  if (hasNetworks) {
+    while (millis() - wifiStartTime < WIFI_TIMEOUT && !wifiConnected) {
+      if (wifiMulti.run() == WL_CONNECTED) {
+        wifiConnected = true;
+        break;
+      }
+      delay(250);
+      Serial.print('.');
     }
-    delay(250);
-    Serial.print('.');
   }
   
   if (wifiConnected) {
     // Successfully connected to WiFi
     myIP = WiFi.localIP();
+    isConfigMode = false;
+    
     Serial.println();
     Serial.print(F("Connected to: "));
     Serial.println(WiFi.SSID());
@@ -397,9 +666,11 @@ void initializeWiFi() {
     snprintf(line[3], LCD_COLS + 1, "IP: %.15s", myIP.toString().c_str());
     
   } else {
-    // WiFi connection failed, start Access Point
+    // WiFi connection failed or no networks saved, start Access Point for configuration
     Serial.println();
-    Serial.println(F("WiFi not available, starting AP mode"));
+    Serial.println(F("Starting WiFi configuration mode"));
+    
+    isConfigMode = true;
     
     // Clear all display lines first
     for (uint8_t i = 0; i < LCD_ROWS; i++) {
@@ -407,7 +678,7 @@ void initializeWiFi() {
     }
     
     // Show temporary status
-    snprintf(line[2], LCD_COLS + 1, "WiFi not available");
+    snprintf(line[2], LCD_COLS + 1, "Config mode...");
     snprintf(line[3], LCD_COLS + 1, "Starting AP...");
     printLines();
     delay(1000);
@@ -426,16 +697,21 @@ void initializeWiFi() {
       snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
     }
     printLines();
-    snprintf(line[0], LCD_COLS + 1, "Connect to this wifi");
-    snprintf(line[1], LCD_COLS + 1, "%.19s", AP_NAME);        // Limit to 19 chars + null terminator
-    snprintf(line[2], LCD_COLS + 1, "%.19s", AP_PWD);         // Limit to 19 chars + null terminator  
-    snprintf(line[3], LCD_COLS + 1, "%.19s", myIP.toString().c_str()); // Limit IP display
+    snprintf(line[0], LCD_COLS + 1, "WiFi Setup Mode");
+    snprintf(line[1], LCD_COLS + 1, "SSID: %.13s", AP_NAME);
+    snprintf(line[2], LCD_COLS + 1, "PWD:  %.13s", AP_PWD);
+    snprintf(line[3], LCD_COLS + 1, "IP: %.15s", myIP.toString().c_str());
   }
 }
 
 void setupWebServer() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/update", HTTP_POST, handleAction);
+  server.on("/wifi", HTTP_GET, handleWiFiConfig);
+  server.on("/wifi/list", HTTP_GET, handleWiFiList);
+  server.on("/wifi/add", HTTP_POST, handleWiFiAdd);
+  server.on("/wifi/delete", HTTP_POST, handleWiFiDelete);
+  server.on("/reboot", HTTP_POST, handleReboot);
   server.onNotFound(handleNotFound);
   
   server.begin();
@@ -617,8 +893,84 @@ void updateClockDisplay() {
 
 void handleRoot() {
   LED_ON;
-  server.send_P(200, "text/html", HTML_PAGE);
+  server.send_P(200, "text/html", GAME_HTML_PAGE);
   LED_OFF;
+}
+
+void handleWiFiConfig() {
+  LED_ON;
+  server.send_P(200, "text/html", WIFI_HTML_PAGE);
+  LED_OFF;
+}
+
+void handleWiFiList() {
+  LED_ON;
+  
+  String json = "{\"networks\":[";
+  
+  for (uint8_t i = 0; i < numWifiConfigs; i++) {
+    if (i > 0) json += ",";
+    json += "{\"ssid\":\"" + String(wifiConfigs[i].ssid) + "\"}";
+  }
+  
+  json += "]}";
+  
+  server.send(200, "application/json", json);
+  LED_OFF;
+}
+
+void handleWiFiAdd() {
+  LED_ON;
+  
+  String response;
+  
+  if (server.hasArg("ssid")) {
+    String ssid = server.arg("ssid");
+    String password = server.arg("password");
+    
+    if (ssid.length() > 0 && ssid.length() <= WIFI_SSID_LENGTH) {
+      addWiFiNetwork(ssid, password);
+      response = "{\"success\":true,\"message\":\"Network added successfully\"}";
+    } else {
+      response = "{\"success\":false,\"message\":\"Invalid SSID length\"}";
+    }
+  } else {
+    response = "{\"success\":false,\"message\":\"Missing SSID parameter\"}";
+  }
+  
+  server.send(200, "application/json", response);
+  LED_OFF;
+}
+
+void handleWiFiDelete() {
+  LED_ON;
+  
+  String response;
+  
+  if (server.hasArg("index")) {
+    int index = server.arg("index").toInt();
+    
+    if (index >= 0 && index < numWifiConfigs) {
+      deleteWiFiNetwork(index);
+      response = "{\"success\":true,\"message\":\"Network deleted successfully\"}";
+    } else {
+      response = "{\"success\":false,\"message\":\"Invalid network index\"}";
+    }
+  } else {
+    response = "{\"success\":false,\"message\":\"Missing index parameter\"}";
+  }
+  
+  server.send(200, "application/json", response);
+  LED_OFF;
+}
+
+void handleReboot() {
+  LED_ON;
+  server.send(200, "application/json", "{\"success\":true,\"message\":\"Rebooting...\"}");
+  LED_OFF;
+  
+  delay(1000);
+  ESP.restart();
 }
 
 void handleAction() {
