@@ -179,6 +179,12 @@ const char WIFI_HTML_PAGE[] PROGMEM = R"rawliteral(
 <body>
 <h2>WiFi Configuration</h2>
 
+<div id="availableNetworks">
+  <h3>Available Networks:</h3>
+  <!-- Networks will be populated here -->
+  <button onclick="scanNetworks()">Scan for Networks</button>
+</div>
+
 <div id="savedNetworks">
   <h3>Saved Networks:</h3>
   <!-- Networks will be populated here -->
@@ -267,6 +273,24 @@ function deleteNetwork(index) {
   }
 }
 
+// populate network SSID on click
+function populateNetwork(ssid) {
+  document.getElementById('newSsid').value = ssid;
+}
+
+// Scan networks
+function scanNetworks() {
+  fetch('/wifi/scan')
+    .then(response => response.json())
+    .then(data => {
+      let ssidList = 'Available Networks:<br>';
+      data.networks.forEach(network => {
+        ssidList += '<a onclick="populateNetwork(\'' + network.ssid + '\')">' + network.ssid + ' - RSSI: ' + network.rssi + 'dBm</a><br>';
+      });
+      document.getElementById('availableNetworks').innerHTML = '<h3>Available Networks:</h3><pre>' + ssidList + '</pre>';
+    });
+}
+
 // Reboot device
 function reboot() {
   if (confirm('Are you sure you want to reboot the device?')) {
@@ -322,6 +346,7 @@ void handleWiFiAdd();
 void handleWiFiDelete();
 void handleReboot();
 void handleNotFound();
+void handleWiFiScan();
 
 // Button actions
 void buttonChange();
@@ -712,6 +737,7 @@ void setupWebServer() {
   server.on("/wifi/add", HTTP_POST, handleWiFiAdd);
   server.on("/wifi/delete", HTTP_POST, handleWiFiDelete);
   server.on("/reboot", HTTP_POST, handleReboot);
+  server.on("/wifi/scan", HTTP_GET, handleWiFiScan);
   server.onNotFound(handleNotFound);
   
   server.begin();
@@ -1027,6 +1053,27 @@ void handleAction() {
 void handleNotFound() {
   LED_ON;
   server.send(404, "text/plain", "404: Not found");
+  LED_OFF;
+}
+
+void handleWiFiScan() {
+  LED_ON;
+  int n = WiFi.scanNetworks();
+  String ssids[n];
+  int rssis[n];
+  for (int i = 0; i < n; ++i) {
+    ssids[i] = WiFi.SSID(i);
+    rssis[i] = WiFi.RSSI(i);
+  }
+
+  // Send the scan results
+  String json = "{\"status\":\"success\",\"networks\":[";
+  for (int i = 0; i < n; ++i) {
+    json += "{\"ssid\":\"" + ssids[i] + "\",\"rssi\":" + rssis[i] + "}";
+    if (i < n - 1) json += ",";
+  }
+  json += "]}";
+  server.send(200, "application/json", json);
   LED_OFF;
 }
 
