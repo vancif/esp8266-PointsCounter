@@ -9,7 +9,7 @@
 // ************************* CONSTANTS AND CONFIGURATION ******************************
 
 // System Configuration
-#define LOOP_DELAY 25  // milliseconds
+#define LOOP_DELAY 15  // milliseconds
 
 // WiFi Configuration
 #define AP_NAME "Points_Setup"
@@ -21,7 +21,7 @@
 
 // Button Configuration
 #define LONG_PRESS_TIME 350
-#define BUTTON_DELAY 150
+#define BUTTON_DEBOUNCE 150
 
 // Pin Definitions
 #define BTN_MINUS D5
@@ -32,6 +32,7 @@
 #define LCD_ADDRESS 0x27
 #define LCD_COLS 20
 #define LCD_ROWS 4
+#define DISPLAY_UPDATE_INTERVAL 200  // milliseconds
 
 // Game Configuration
 #define MAX_PLAYERS 4
@@ -100,6 +101,8 @@ bool randomizeStart = false;
 int lastButtonState = LOW;  // Start with LOW since we expect LOW with pull-down resistors
 unsigned long pressedTime = 0;
 unsigned long releasedTime = 0;
+unsigned long lastButtonRead = 0;
+unsigned long lastButtonAction = 0;
 
 // Clock state
 unsigned long p1_start_time = 0;
@@ -708,14 +711,30 @@ void initializeWiFi() {
     printLines();
     delay(1000);
     
+    // Optimize AP settings for better performance
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(AP_NAME, AP_PWD, 1, 0);
-    myIP = WiFi.softAPIP();
+    WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
     
-    Serial.print(F("AP started: "));
-    Serial.println(AP_NAME);
-    Serial.print(F("AP IP: "));
-    Serial.println(myIP);
+    // Use channel 6 (less congested) and set max connections to 4
+    bool apStarted = WiFi.softAP(AP_NAME, AP_PWD, 6, 0, 4);
+    
+    if (apStarted) {
+      myIP = WiFi.softAPIP();
+      
+      Serial.print(F("AP started: "));
+      Serial.println(AP_NAME);
+      Serial.print(F("AP IP: "));
+      Serial.println(myIP);
+      
+      // Set WiFi power to maximum for better range in AP mode
+      WiFi.setOutputPower(20.5); // Max power in dBm
+      
+    } else {
+      Serial.println(F("Failed to start AP!"));
+      // Fallback to default settings
+      WiFi.softAP(AP_NAME, AP_PWD);
+      myIP = WiFi.softAPIP();
+    }
     
     // Clear and prepare final AP display messages
     for (uint8_t i = 0; i < LCD_ROWS; i++) {
@@ -747,6 +766,13 @@ void setupWebServer() {
 // ************************* BUTTON HANDLING ******************************
 
 void buttonManagement() {
+  unsigned long currentTime = millis();
+  
+  // Debounce - prevent actions too close together
+  if (currentTime - lastButtonAction < BUTTON_DEBOUNCE) {
+    return;
+  }
+  
   // ********* D8 LONG-SHORT PRESS *********
   int currentState = digitalRead(BTN_MAIN);
 
@@ -760,19 +786,30 @@ void buttonManagement() {
     if ( pressDuration < LONG_PRESS_TIME ) {
       // SHORT PRESS
       buttonChange();
+      lastButtonAction = currentTime;
     } else if ( pressDuration >= LONG_PRESS_TIME ) {
       // LONG PRESS
       buttonEnter();
+      lastButtonAction = currentTime;
     }
   }
 
   // save the last state
   lastButtonState = currentState;
 
-  //************* OTHERS SIMPLE BUTTONS *********
-  if (digitalRead(BTN_MINUS) == HIGH && digitalRead(BTN_PLUS) == LOW) buttonMinus();
-  if (digitalRead(BTN_PLUS) == HIGH && digitalRead(BTN_MINUS) == LOW) buttonPlus();
-  if (digitalRead(BTN_PLUS) == HIGH && digitalRead(BTN_MINUS) == HIGH) buttonOption();
+  //************* OTHER SIMPLE BUTTONS *********
+  if (digitalRead(BTN_MINUS) == HIGH && digitalRead(BTN_PLUS) == LOW) {
+    buttonMinus();
+    lastButtonAction = currentTime;
+  }
+  else if (digitalRead(BTN_PLUS) == HIGH && digitalRead(BTN_MINUS) == LOW) {
+    buttonPlus();
+    lastButtonAction = currentTime;
+  }
+  else if (digitalRead(BTN_PLUS) == HIGH && digitalRead(BTN_MINUS) == HIGH) {
+    buttonOption();
+    lastButtonAction = currentTime;
+  }
 }
 
 // ************************* DISPLAY MANAGEMENT ******************************
@@ -796,6 +833,7 @@ void updateDisplay() {
       // Display connection info or default state
       break;
   }
+  printLines();
 }
 
 void updateMainDisplay() {
@@ -871,25 +909,14 @@ void updateUtilsDisplay() {
 void updateClockDisplay() {
   unsigned long now = millis();
   
-  // Update running timers
+  // Update running timer for active player
   if (!clockPaused) {
-    switch (activeAction_Clock) {
-      case 1:
-        if (p1_start_time == 0) {
-          p1_start_time = now - BUTTON_DELAY - LOOP_DELAY;
-        } else {
-          p1_time += (now - p1_start_time);
-          p1_start_time = now;
-        }
-        break;
-      case 2:
-        if (p2_start_time == 0) {
-          p2_start_time = now - BUTTON_DELAY - LOOP_DELAY;
-        } else {
-          p2_time += (now - p2_start_time);
-          p2_start_time = now;
-        }
-        break;
+    if (activeAction_Clock == 1 && p1_start_time > 0) {
+      p1_time += (now - p1_start_time);
+      p1_start_time = now;
+    } else if (activeAction_Clock == 2 && p2_start_time > 0) {
+      p2_time += (now - p2_start_time);
+      p2_start_time = now;
     }
   }
   
@@ -920,19 +947,23 @@ void updateClockDisplay() {
 void handleRoot() {
   LED_ON;
   server.send_P(200, "text/html", GAME_HTML_PAGE);
+  yield(); // Allow WiFi stack to process
   LED_OFF;
 }
 
 void handleWiFiConfig() {
   LED_ON;
   server.send_P(200, "text/html", WIFI_HTML_PAGE);
+  yield(); // Allow WiFi stack to process
   LED_OFF;
 }
 
 void handleWiFiList() {
   LED_ON;
   
-  String json = "{\"networks\":[";
+  String json;
+  json.reserve(200); // Pre-allocate memory to prevent fragmentation
+  json = "{\"networks\":[";
   
   for (uint8_t i = 0; i < numWifiConfigs; i++) {
     if (i > 0) json += ",";
@@ -942,6 +973,7 @@ void handleWiFiList() {
   json += "]}";
   
   server.send(200, "application/json", json);
+  yield();
   LED_OFF;
 }
 
@@ -965,6 +997,7 @@ void handleWiFiAdd() {
   }
   
   server.send(200, "application/json", response);
+  yield();
   LED_OFF;
 }
 
@@ -1027,6 +1060,9 @@ void handleAction() {
       for (uint8_t j = 1; j < MAX_PLAYERS; j++) {
         playerPoints[i][j] = 0;
       }
+      
+      // Yield periodically
+      if (i % 2 == 0) yield();
     }
     
     Serial.print(F("Created game with "));
@@ -1046,7 +1082,9 @@ void handleAction() {
     }
   }
   
-  server.send(200, "application/json", "{\"status\":\"success\"}");
+  // Send minimal response quickly
+  server.send(200, "application/json", "{\"ok\":1}");
+  yield();
   LED_OFF;
 }
 
@@ -1058,22 +1096,30 @@ void handleNotFound() {
 
 void handleWiFiScan() {
   LED_ON;
-  int n = WiFi.scanNetworks();
-  String ssids[n];
-  int rssis[n];
-  for (int i = 0; i < n; ++i) {
-    ssids[i] = WiFi.SSID(i);
-    rssis[i] = WiFi.RSSI(i);
-  }
-
-  // Send the scan results
-  String json = "{\"status\":\"success\",\"networks\":[";
-  for (int i = 0; i < n; ++i) {
-    json += "{\"ssid\":\"" + ssids[i] + "\",\"rssi\":" + rssis[i] + "}";
-    if (i < n - 1) json += ",";
+  
+  // Limit scan time to prevent blocking
+  WiFi.scanDelete(); // Clear previous results
+  yield();
+  
+  int n = WiFi.scanNetworks(false, true); // async=false, show_hidden=true
+  yield();
+  
+  // Build response efficiently
+  String json;
+  json.reserve(512); // Pre-allocate memory
+  json = "{\"status\":\"success\",\"networks\":[";
+  
+  for (int i = 0; i < n && i < 20; ++i) { // Limit to 20 networks max
+    if (i > 0) json += ",";
+    json += "{\"ssid\":\"" + WiFi.SSID(i) + "\",\"rssi\":" + WiFi.RSSI(i) + "}";
+    
+    // Yield periodically during long operations
+    if (i % 5 == 0) yield();
   }
   json += "]}";
+  
   server.send(200, "application/json", json);
+  yield();
   LED_OFF;
 }
 
@@ -1099,14 +1145,32 @@ void buttonChange() {
       break;
       
     case STATE_CLOCK:
-      clockPaused = !clockPaused;
+      // Accumulate time for current player before pausing/unpausing
       if (!clockPaused) {
+        unsigned long now = millis();
+        if (activeAction_Clock == 1 && p1_start_time > 0) {
+          p1_time += (now - p1_start_time);
+        } else if (activeAction_Clock == 2 && p2_start_time > 0) {
+          p2_time += (now - p2_start_time);
+        }
+      }
+      
+      clockPaused = !clockPaused;
+      
+      if (!clockPaused) {
+        // Resume: set start time for active player
         unsigned long now = millis();
         if (activeAction_Clock == 1) {
           p1_start_time = now;
+          p2_start_time = 0;
         } else if (activeAction_Clock == 2) {
           p2_start_time = now;
+          p1_start_time = 0;
         }
+      } else {
+        // Pause: clear start times
+        p1_start_time = 0;
+        p2_start_time = 0;
       }
       break;
       
@@ -1210,14 +1274,32 @@ void buttonPlus() {
       break;
       
     case STATE_CLOCK:
+      // Accumulate time for current player before switching
+      if (!clockPaused) {
+        unsigned long now = millis();
+        if (activeAction_Clock == 1 && p1_start_time > 0) {
+          p1_time += (now - p1_start_time);
+        } else if (activeAction_Clock == 2 && p2_start_time > 0) {
+          p2_time += (now - p2_start_time);
+        }
+      }
+      
       activeAction_Clock++;
       if (activeAction_Clock > 2) activeAction_Clock = 1;
       
-      // Reset timer states when switching players
-      if (activeAction_Clock == 1) {
-        p2_start_time = 0;
-      } else if (activeAction_Clock == 2) {
+      // Set new start time for the newly active player
+      if (!clockPaused) {
+        unsigned long now = millis();
+        if (activeAction_Clock == 1) {
+          p1_start_time = now;
+          p2_start_time = 0;
+        } else if (activeAction_Clock == 2) {
+          p2_start_time = now;
+          p1_start_time = 0;
+        }
+      } else {
         p1_start_time = 0;
+        p2_start_time = 0;
       }
       break;
       
@@ -1248,14 +1330,32 @@ void buttonMinus() {
       break;
       
     case STATE_CLOCK:
+      // Accumulate time for current player before switching
+      if (!clockPaused) {
+        unsigned long now = millis();
+        if (activeAction_Clock == 1 && p1_start_time > 0) {
+          p1_time += (now - p1_start_time);
+        } else if (activeAction_Clock == 2 && p2_start_time > 0) {
+          p2_time += (now - p2_start_time);
+        }
+      }
+      
       activeAction_Clock++;
       if (activeAction_Clock > 2) activeAction_Clock = 1;
       
-      // Reset timer states when switching players
-      if (activeAction_Clock == 1) {
-        p2_start_time = 0;
-      } else if (activeAction_Clock == 2) {
+      // Set new start time for the newly active player
+      if (!clockPaused) {
+        unsigned long now = millis();
+        if (activeAction_Clock == 1) {
+          p1_start_time = now;
+          p2_start_time = 0;
+        } else if (activeAction_Clock == 2) {
+          p2_start_time = now;
+          p1_start_time = 0;
+        }
+      } else {
         p1_start_time = 0;
+        p2_start_time = 0;
       }
       break;
       
@@ -1304,15 +1404,49 @@ void setup() {
 // ************************* MAIN LOOP ******************************
 
 void loop() {
-  // Handle web server requests
+  static unsigned long lastDisplayUpdate = 0;
+  static bool displayNeedsUpdate = true;
+  unsigned long currentTime = millis();
+  
+  // Handle web server requests with higher priority
   server.handleClient();
-
+  
+  // Give time to WiFi stack - crucial for AP mode performance
+  yield();
+  
+  // Store previous state to detect changes
+  static DisplayState previousState = STATE_NULL;
+  static uint8_t previousActiveMain = 255;
+  static uint8_t previousActiveDetail = 255;
+  static uint8_t previousActiveUtils = 255;
+  static uint8_t previousActiveClick = 255;
+  
+  // Button management handles its own timing
   buttonManagement();
-
-  // Update display
-  updateDisplay();
-  printLines();
-
-  // Small delay to prevent excessive CPU usage and allow WiFi stack processing
+  
+  // Check if display needs updating
+  if (displayState != previousState || 
+      activeAction_Main != previousActiveMain ||
+      activeAction_Detail != previousActiveDetail ||
+      activeAction_Utils != previousActiveUtils ||
+      activeAction_Clock != previousActiveClick ||
+      displayState == STATE_CLOCK) { // Clock always needs updates
+    
+    displayNeedsUpdate = true;
+    previousState = displayState;
+    previousActiveMain = activeAction_Main;
+    previousActiveDetail = activeAction_Detail;
+    previousActiveUtils = activeAction_Utils;
+    previousActiveClick = activeAction_Clock;
+  }
+  
+  // Update display only when needed
+  if (displayNeedsUpdate | (currentTime - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL)) {
+    lastDisplayUpdate = currentTime;
+    updateDisplay();
+    displayNeedsUpdate = false;
+  }
+  
+  // Smaller delay to improve responsiveness
   delay(LOOP_DELAY);
 }
