@@ -1,3 +1,4 @@
+#include <ArduinoOTA.h>
 #include <LiquidCrystal_I2C.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
@@ -357,6 +358,9 @@ void buttonEnter();
 void buttonPlus();
 void buttonMinus();
 void buttonOption();
+
+// OTA
+void initializeOTA();
 
 // Utility functions
 template<typename T> const T& getArrayElement(const T* array, int pos, int length);
@@ -1385,6 +1389,44 @@ void buttonOption() {
   }
 }
 
+// *********************** OTA SETUP ****************************
+
+void initializeOTA() {
+    // Impostazioni base OTA
+  ArduinoOTA.setHostname("MagicPoints");
+  ArduinoOTA.setPassword("1234");
+
+  // Callback per debug
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH)
+      type = "sketch";
+    else // U_SPIFFS
+      type = "filesystem";
+    Serial.println("Begin OTA Update " + type);
+  });
+
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd OTA Update");
+  });
+
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Errore[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Authentication failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Address Error");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connection Error");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Error");
+    else if (error == OTA_END_ERROR) Serial.println("End Error");
+  });
+
+  ArduinoOTA.begin();
+  Serial.println("OTA ready!");
+}
+
 // ************************* SETUP ******************************
 
 void setup() {
@@ -1396,9 +1438,14 @@ void setup() {
   
   initializeWiFi();
   setupWebServer();
+  initializeOTA();
   
   // Show final message
   printLines();
+  const int cpufreq = ESP.getCpuFreqMHz();
+  Serial.print(F("Setup complete! CPU Frequency: "));
+  Serial.print(cpufreq);
+  Serial.println(F(" MHz"));
 }
 
 // ************************* MAIN LOOP ******************************
@@ -1408,10 +1455,10 @@ void loop() {
   static bool displayNeedsUpdate = true;
   unsigned long currentTime = millis();
   
-  // Handle web server requests with higher priority
+  // Handle web server and OTA
   server.handleClient();
-  
-  // Give time to WiFi stack - crucial for AP mode performance
+  yield();
+  ArduinoOTA.handle();
   yield();
   
   // Store previous state to detect changes
