@@ -330,6 +330,7 @@ void updateMainDisplay();
 void updateDetailDisplay();
 void updateUtilsDisplay();
 void updateClockDisplay();
+void clearDisplay();
 
 // Data management
 void saveData();
@@ -367,13 +368,6 @@ template<typename T> const T& getArrayElement(const T* array, int pos, int lengt
 void resetPlayerPoints(uint8_t startingPoints);
 
 // ************************* UTILITY FUNCTIONS ******************************
-
-void printLines() {
-  for (uint8_t i = 0; i < LCD_ROWS; i++) {
-    lcd.setCursor(0, i);
-    lcd.print(line[i]);
-  }
-}
 
 template<typename T> 
 const T& getArrayElement(const T* array, int pos, int length) {
@@ -628,12 +622,10 @@ void initializeWiFi() {
   loadWiFiConfig();
 
   // Clear display and show WiFi setup message
-  for (uint8_t i = 0; i < LCD_ROWS; i++) {
-    snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, "");
-  }
+  clearDisplay();
   snprintf(line[3], LCD_COLS + 1, "WiFi setup...");
   printLines();
-  
+
   // Add saved Wi-Fi networks
   bool hasNetworks = false;
   for (uint8_t i = 0; i < numWifiConfigs; i++) {
@@ -672,10 +664,7 @@ void initializeWiFi() {
     Serial.println(myIP);
     
     // Clear display and show temporary mDNS setup message
-    for (uint8_t i = 0; i < LCD_ROWS; i++) {
-      snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
-    }
-    printLines();
+    clearDisplay();
     snprintf(line[2], LCD_COLS + 1, "%.19s", myIP.toString().c_str());
     snprintf(line[3], LCD_COLS + 1, "mDNS setup...");
     printLines();
@@ -689,10 +678,7 @@ void initializeWiFi() {
     }
     
     // Clear and prepare final WiFi display messages
-    for (uint8_t i = 0; i < LCD_ROWS; i++) {
-      snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
-    }
-    printLines();
+    clearDisplay();
     snprintf(line[0], LCD_COLS + 1, "Connect to this wifi");
     snprintf(line[1], LCD_COLS + 1, "to start a game");
     snprintf(line[2], LCD_COLS + 1, "SSID: %.13s", WiFi.SSID().c_str());
@@ -705,12 +691,8 @@ void initializeWiFi() {
     
     isConfigMode = true;
     
-    // Clear all display lines first
-    for (uint8_t i = 0; i < LCD_ROWS; i++) {
-      snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
-    }
-    
     // Show temporary status
+    clearDisplay();
     snprintf(line[2], LCD_COLS + 1, "Config mode...");
     snprintf(line[3], LCD_COLS + 1, "Starting AP...");
     printLines();
@@ -742,14 +724,13 @@ void initializeWiFi() {
     }
     
     // Clear and prepare final AP display messages
-    for (uint8_t i = 0; i < LCD_ROWS; i++) {
-      snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
-    }
-    printLines();
+    clearDisplay();
     snprintf(line[0], LCD_COLS + 1, "WiFi Setup Mode");
     snprintf(line[1], LCD_COLS + 1, "SSID: %.13s", AP_NAME);
     snprintf(line[2], LCD_COLS + 1, "PWD:  %.13s", AP_PWD);
     snprintf(line[3], LCD_COLS + 1, "IP: %.15s", myIP.toString().c_str());
+    // Not printing lines to display since we have other things to do after this
+    // before user can interact.
   }
 }
 
@@ -818,6 +799,20 @@ void buttonManagement() {
 }
 
 // ************************* DISPLAY MANAGEMENT ******************************
+
+void clearDisplay() {
+  for (uint8_t i = 0; i < LCD_ROWS; i++) {
+    snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
+  }
+  printLines();
+}
+
+void printLines() {
+  for (uint8_t i = 0; i < LCD_ROWS; i++) {
+    lcd.setCursor(0, i);
+    lcd.print(line[i]);
+  }
+}
 
 void updateDisplay() {
   switch (displayState) {
@@ -1404,7 +1399,10 @@ void initializeOTA() {
       type = "sketch";
     else // U_SPIFFS
       type = "filesystem";
-    Serial.println("Begin OTA Update " + type);
+    clearDisplay();
+    snprintf(line[0], LCD_COLS + 1, "*** OTA Update ***");
+    snprintf(line[1], LCD_COLS + 1, "Updating: %s", type.c_str());
+    printLines();
   });
 
   ArduinoOTA.onEnd([]() {
