@@ -679,6 +679,7 @@ void initializeWiFi() {
     snprintf(line[2], LCD_COLS + 1, "%.19s", myIP.toString().c_str());
     snprintf(line[3], LCD_COLS + 1, "mDNS setup...");
     printLines();
+    delay(1000);
     
     // Start mDNS responder
     if (MDNS.begin("MagicPoints")) {
