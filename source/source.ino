@@ -7,6 +7,9 @@
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
 
+// Telnet includes
+#include <WiFiServer.h>
+
 // ************************* CONSTANTS AND CONFIGURATION ******************************
 
 // System Configuration
@@ -19,6 +22,11 @@
 #define WIFI_SSID_LENGTH 32
 #define WIFI_PWD_LENGTH 32
 #define WIFI_TIMEOUT 15000 // 15 seconds
+
+// Telnet Configuration
+#define TELNET_PORT 23
+#define TELNET_MAX_CLIENTS 1
+#define TELNET_COMMAND_LENGTH 64
 
 // Button Configuration
 #define LONG_PRESS_TIME 350
@@ -80,6 +88,11 @@ IPAddress myIP;
 WiFiConfig wifiConfigs[MAX_WIFI_NETWORKS];
 uint8_t numWifiConfigs = 0;
 bool isConfigMode = false;
+
+// Telnet server components
+WiFiServer telnetServer(TELNET_PORT);
+WiFiClient telnetClients[TELNET_MAX_CLIENTS];
+bool telnetConnected = false;
 
 // Display components
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
@@ -323,6 +336,15 @@ void initializeHardware();
 void initializeDisplay();
 void initializeWiFi();
 void setupWebServer();
+void setupTelnetServer();
+
+// Telnet handling
+void handleTelnetClients();
+void processTelnetCommand(String command, WiFiClient& client);
+void telnetPrint(const String& message);
+void telnetPrintln(const String& message);
+void showTelnetHelp(WiFiClient& client);
+void showTelnetStatus(WiFiClient& client);
 
 // Button handling
 void buttonManagement();
@@ -754,6 +776,17 @@ void setupWebServer() {
   Serial.println(F("HTTP server started"));
 }
 
+// ************************* TELNET SERVER SETUP ******************************
+
+void setupTelnetServer() {
+  telnetServer.begin();
+  telnetServer.setNoDelay(true);
+  
+  Serial.print(F("Telnet server started on port "));
+  Serial.println(TELNET_PORT);
+  Serial.println(F("Connect using: telnet <IP> 23"));
+}
+
 // ************************* BUTTON HANDLING ******************************
 
 void buttonManagement() {
@@ -1133,6 +1166,363 @@ void handleWiFiScan() {
   LED_OFF;
 }
 
+// ************************* TELNET HANDLERS ******************************
+
+void handleTelnetClients() {
+  // Check for new clients
+  if (telnetServer.hasClient()) {
+    // Find a free slot for the new client
+    for (uint8_t i = 0; i < TELNET_MAX_CLIENTS; i++) {
+      if (!telnetClients[i] || !telnetClients[i].connected()) {
+        if (telnetClients[i]) telnetClients[i].stop();
+        telnetClients[i] = telnetServer.available();
+        
+        Serial.print(F("New Telnet client connected from: "));
+        Serial.println(telnetClients[i].remoteIP());
+        
+        telnetClients[i].println(F("===================================="));
+        telnetClients[i].println(F("ESP8266 Points Counter - Telnet"));
+        telnetClients[i].println(F("===================================="));
+        telnetClients[i].println(F("Type 'help' for available commands"));
+        telnetClients[i].print(F("> "));
+        
+        telnetConnected = true;
+        break;
+      }
+    }
+    
+    // If no free slot, reject the connection
+    if (telnetServer.hasClient()) {
+      WiFiClient rejectClient = telnetServer.available();
+      rejectClient.println(F("Server busy. Connection rejected."));
+      rejectClient.stop();
+    }
+  }
+  
+  // Handle existing clients
+  for (uint8_t i = 0; i < TELNET_MAX_CLIENTS; i++) {
+    if (telnetClients[i] && telnetClients[i].connected()) {
+      if (telnetClients[i].available()) {
+        String command = telnetClients[i].readStringUntil('\n');
+        command.trim();
+        
+        if (command.length() > 0) {
+          processTelnetCommand(command, telnetClients[i]);
+        }
+        telnetClients[i].print(F("> "));
+      }
+    } else if (telnetClients[i]) {
+      // Cleanup disconnected clients
+      telnetClients[i].stop();
+      Serial.print(F("Telnet client "));
+      Serial.print(i);
+      Serial.println(F(" disconnected"));
+    }
+  }
+  
+  // Update connection status
+  telnetConnected = false;
+  for (uint8_t i = 0; i < TELNET_MAX_CLIENTS; i++) {
+    if (telnetClients[i] && telnetClients[i].connected()) {
+      telnetConnected = true;
+      break;
+    }
+  }
+}
+
+void processTelnetCommand(String command, WiFiClient& client) {
+  command.toLowerCase();
+  
+  if (command == "help") {
+    showTelnetHelp(client);
+  } else if (command == "status") {
+    showTelnetStatus(client);
+  } else if (command == "players") {
+    client.println(F("Current Players:"));
+    for (uint8_t i = 0; i < numPlayers; i++) {
+      client.print(F("Player "));
+      client.print(i + 1);
+      client.print(F(": "));
+      client.print(playerName[i]);
+      client.print(F(" (Points: "));
+      client.print(playerPoints[i][0]);
+      client.println(F(")"));
+    }
+  } else if (command.startsWith("points ")) {
+    // Format: points <player_num> <new_points>
+    int firstSpace = command.indexOf(' ');
+    int secondSpace = command.indexOf(' ', firstSpace + 1);
+    
+    if (firstSpace != -1 && secondSpace != -1) {
+      uint8_t playerNum = command.substring(firstSpace + 1, secondSpace).toInt();
+      uint8_t newPoints = command.substring(secondSpace + 1).toInt();
+      
+      if (playerNum >= 1 && playerNum <= numPlayers) {
+        playerPoints[playerNum - 1][0] = constrain(newPoints, 0, 255);
+        client.print(F("Set player "));
+        client.print(playerNum);
+        client.print(F(" points to "));
+        client.println(newPoints);
+      } else {
+        client.println(F("Invalid player number"));
+      }
+    } else {
+      client.println(F("Usage: points <player_num> <new_points>"));
+    }
+  } else if (command == "save") {
+    saveData();
+  } else if (command == "load") {
+    loadData();
+  } else if (command == "reset20") {
+    resetPlayerPoints(20);
+    client.println(F("All players reset to 20 points"));
+  } else if (command == "reset40") {
+    resetPlayerPoints(40);
+    client.println(F("All players reset to 40 points"));
+  } else if (command == "wifi") {
+    client.print(F("WiFi Status: "));
+    client.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+    if (WiFi.status() == WL_CONNECTED) {
+      client.print(F("SSID: "));
+      client.println(WiFi.SSID());
+      client.print(F("IP: "));
+      client.println(WiFi.localIP());
+      client.print(F("Signal: "));
+      client.print(WiFi.RSSI());
+      client.println(F(" dBm"));
+    }
+  } else if (command == "memory") {
+    client.print(F("Free Heap: "));
+    client.print(ESP.getFreeHeap());
+    client.println(F(" bytes"));
+    client.print(F("Heap Fragmentation: "));
+    client.print(ESP.getHeapFragmentation());
+    client.println(F("%"));
+    client.print(F("Max Free Block: "));
+    client.print(ESP.getMaxFreeBlockSize());
+    client.println(F(" bytes"));
+  } else if (command == "uptime") {
+    unsigned long uptime = millis();
+    unsigned long days = uptime / 86400000;
+    unsigned long hours = (uptime % 86400000) / 3600000;
+    unsigned long minutes = (uptime % 3600000) / 60000;
+    unsigned long seconds = (uptime % 60000) / 1000;
+    
+    client.print(F("Uptime: "));
+    client.print(days);
+    client.print(F(" days, "));
+    client.print(hours);
+    client.print(F(" hours, "));
+    client.print(minutes);
+    client.print(F(" minutes, "));
+    client.print(seconds);
+    client.println(F(" seconds"));
+  } else if (command == "reboot") {
+    client.println(F("Rebooting device..."));
+    delay(1000);
+    ESP.restart();
+  } else if (command == "display") {
+    client.print(F("Display State: "));
+    switch (displayState) {
+      case STATE_NULL: client.println(F("NULL")); break;
+      case STATE_MAIN: client.println(F("MAIN")); break;
+      case STATE_DETAIL: client.println(F("DETAIL")); break;
+      case STATE_UTILS: client.println(F("UTILS")); break;
+      case STATE_CLOCK: client.println(F("CLOCK")); break;
+      default: client.println(F("UNKNOWN")); break;
+    }
+  } else if (command == "main") {
+    displayState = STATE_MAIN;
+    activeAction_Main = 0;
+    client.println(F("Switched to main display"));
+  } else if (command == "plus") {
+    buttonPlus();
+    client.println(F("Plus button pressed"));
+  } else if (command == "minus") {
+    buttonMinus();
+    client.println(F("Minus button pressed"));
+  } else if (command == "enter") {
+    buttonEnter();
+    client.println(F("Enter button pressed"));
+  } else if (command == "change") {
+    buttonChange();
+    client.println(F("Change button pressed"));
+  } else if (command == "quit" || command == "exit") {
+    client.println(F("Goodbye!"));
+    client.stop();
+  } else if (command == "wifilist" ) {
+    client.println(F("Saved WiFi Networks:"));
+    for (uint8_t i = 0; i < MAX_WIFI_NETWORKS; i++) {
+      client.print(i);
+      client.print(F(": "));
+      client.println(wifiConfigs[i].ssid);
+    }
+  } else if ( command.startsWith("eeprom write") ) {
+    // Format: write eeprom <address> <value>
+    // Value is a single byte (0-255) - supports decimal and hex (0x prefix)
+    int firstSpace = command.indexOf(' ', 14);  // Find space after address
+    int addr = command.substring(13, firstSpace).toInt();
+
+    if (firstSpace == -1) {
+      client.println(F("Usage: eeprom write <address> <value>"));
+      return;
+    }
+    if (addr < 0 || addr >= EEPROM_SIZE) {
+      client.println(F("Invalid EEPROM address"));
+      return;
+    }
+
+    String valueStr = command.substring(firstSpace + 1);
+    uint8_t value;
+    
+    if (valueStr.startsWith("0x") || valueStr.startsWith("0X")) {
+      // Parse as hexadecimal
+      value = strtol(valueStr.c_str(), NULL, 16);
+    } else {
+      // Parse as decimal
+      value = valueStr.toInt();
+    }
+
+    EEPROM.write(addr, value);
+    EEPROM.commit();
+    
+    client.println();
+    client.print(F("Successfully wrote "));
+    client.print(value);
+    client.print(F(" (0x"));
+    if (value < 16) client.print(F("0"));
+    client.print(value, HEX);
+    client.print(F(") to address "));
+    client.println(addr);
+  } else if ( command == "eeprom read all") {
+    // let's read all EEPROM
+    client.println(F("EEPROM Contents:"));
+    for (int addr = 0; addr < EEPROM_SIZE; addr++) {
+      char value = EEPROM.read(addr);
+      client.print(F("Addr "));
+      client.print(addr);
+      client.print(F(": '"));
+      if (isPrintable(value)) {
+        client.print(value);
+      } else {
+        client.print(F("."));
+      }
+      client.print(F("' ("));
+      client.print((uint8_t)value);
+      client.print(F(") - 0x"));
+      // Print hex value with leading zero if needed
+      if ((uint8_t)value < 16) {
+        client.print(F("0"));
+      }
+      client.print((uint8_t)value, HEX);
+      client.println();
+    }
+    
+  } else if (command.startsWith("eeprom read byte")) {
+    int firstSpace = command.indexOf(' ', 17);  // Find space after address
+    int addr = command.substring(16, firstSpace).toInt();
+    char value = EEPROM.read(addr);
+    client.print(F("Addr "));
+    client.print(addr);
+    client.print(F(": '"));
+    client.print(F("0x"));
+    // Print hex value with leading zero if needed
+    if ((uint8_t)value < 16) {
+      client.print(F("0"));
+    }
+    client.print((uint8_t)value, HEX);
+    client.println();
+  } else if (command.length() > 0) {
+    client.print(F("Unknown command: "));
+    client.println(command);
+    client.println(F("Type 'help' for available commands"));
+  }
+}
+
+void showTelnetHelp(WiFiClient& client) {
+  client.println(F("Available Commands:"));
+  client.println(F("=================="));
+  client.println(F("help               - Show this help"));
+  client.println(F("status             - Show system status"));
+  client.println(F("players            - List all players and points"));
+  client.println(F("points <p> <n>     - Set player <p> to <n> points"));
+  client.println(F("save               - Save game data"));
+  client.println(F("load               - Load game data"));
+  client.println(F("reset20            - Reset all players to 20 points"));
+  client.println(F("reset40            - Reset all players to 40 points"));
+  client.println(F("wifi               - Show WiFi status"));
+  client.println(F("wifilist           - List saved WiFi networks"));
+  client.println(F("memory             - Show memory info"));
+  client.println(F("uptime             - Show device uptime"));
+  client.println(F("display            - Show current display state"));
+  client.println(F("main               - Switch to main display"));
+  client.println(F("plus               - Simulate plus button"));
+  client.println(F("minus              - Simulate minus button"));
+  client.println(F("enter              - Simulate enter button"));
+  client.println(F("change             - Simulate change button"));
+  client.println(F("eeprom write <a> <v> - Write value <v> to EEPROM address <a>"));
+  client.println(F("eeprom read all    - Read all EEPROM contents"));
+  client.println(F("eeprom read byte <a> - Read byte from EEPROM address <a>"));
+  client.println(F("reboot             - Restart the device"));
+  client.println(F("quit/exit          - Close Telnet connection"));
+}
+
+void showTelnetStatus(WiFiClient& client) {
+  client.println(F("System Status:"));
+  client.println(F("=============="));
+  
+  client.print(F("Device: ESP8266 Points Counter v2.0"));
+  client.println();
+  
+  client.print(F("Uptime: "));
+  unsigned long uptime = millis();
+  client.print(uptime / 1000);
+  client.println(F(" seconds"));
+  
+  client.print(F("Free Memory: "));
+  client.print(ESP.getFreeHeap());
+  client.println(F(" bytes"));
+  
+  client.print(F("WiFi: "));
+  if (WiFi.status() == WL_CONNECTED) {
+    client.print(F("Connected to "));
+    client.println(WiFi.SSID());
+    client.print(F("IP: "));
+    client.println(WiFi.localIP());
+  } else {
+    client.println(F("Not connected"));
+  }
+  
+  client.print(F("Players: "));
+  client.println(numPlayers);
+  
+  client.print(F("Display State: "));
+  switch (displayState) {
+    case STATE_NULL: client.println(F("NULL")); break;
+    case STATE_MAIN: client.println(F("MAIN")); break;
+    case STATE_DETAIL: client.println(F("DETAIL")); break;
+    case STATE_UTILS: client.println(F("UTILS")); break;
+    case STATE_CLOCK: client.println(F("CLOCK")); break;
+    default: client.println(F("UNKNOWN")); break;
+  }
+}
+
+void telnetPrint(const String& message) {
+  for (uint8_t i = 0; i < TELNET_MAX_CLIENTS; i++) {
+    if (telnetClients[i] && telnetClients[i].connected()) {
+      telnetClients[i].print(message);
+    }
+  }
+}
+
+void telnetPrintln(const String& message) {
+  for (uint8_t i = 0; i < TELNET_MAX_CLIENTS; i++) {
+    if (telnetClients[i] && telnetClients[i].connected()) {
+      telnetClients[i].println(message);
+    }
+  }
+}
+
 // ************************* BUTTON ACTIONS ******************************
 
 void buttonChange() {
@@ -1467,6 +1857,12 @@ void setup() {
   
   initializeWiFi();
   setupWebServer();
+  
+  // Only setup Telnet server if WiFi is connected (not in AP config mode)
+  if (!isConfigMode && WiFi.status() == WL_CONNECTED) {
+    setupTelnetServer();
+  }
+  
   initializeOTA();
   
   // Show final message
@@ -1475,6 +1871,10 @@ void setup() {
   Serial.print(F("Setup complete! CPU Frequency: "));
   Serial.print(cpufreq);
   Serial.println(F(" MHz"));
+  
+  if (telnetConnected || !isConfigMode) {
+    Serial.println(F("Telnet server available at port 23"));
+  }
 }
 
 // ************************* MAIN LOOP ******************************
@@ -1489,6 +1889,12 @@ void loop() {
   yield();
   ArduinoOTA.handle();
   yield();
+  
+  // Handle Telnet clients (only if not in config mode)
+  if (!isConfigMode && WiFi.status() == WL_CONNECTED) {
+    handleTelnetClients();
+    yield();
+  }
   
   // Store previous state to detect changes
   static DisplayState previousState = STATE_NULL;
