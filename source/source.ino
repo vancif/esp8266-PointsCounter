@@ -293,7 +293,7 @@ function scanNetworks() {
     .then(data => {
       let ssidList = 'Available Networks:<br>';
       data.networks.forEach(network => {
-        ssidList += '<a onclick="populateNetwork(\'' + network.ssid + '\')">' + network.ssid + ' - RSSI: ' + network.rssi + 'dBm</a><br>';
+        ssidList += '<span>' + network.ssid + ' - RSSI: ' + network.rssi + 'dBm</span><button onclick="populateNetwork(\'' + network.ssid + '\')">Connect</button><br>';
       });
       document.getElementById('availableNetworks').innerHTML = '<h3>Available Networks:</h3><pre>' + ssidList + '</pre>';
     });
@@ -343,7 +343,7 @@ bool validateEEPROMData();
 void saveWiFiConfig();
 void loadWiFiConfig();
 bool validateWiFiEEPROMData();
-void addWiFiNetwork(const String& ssid, const String& password);
+int addWiFiNetwork(const String& ssid, const String& password);
 void deleteWiFiNetwork(uint8_t index);
 
 // Web handlers
@@ -518,10 +518,10 @@ bool validateWiFiEEPROMData() {
   return wifiMagic == 0xC0DE;
 }
 
-void addWiFiNetwork(const String& ssid, const String& password) {
+int addWiFiNetwork(const String& ssid, const String& password) {
   if (numWifiConfigs >= MAX_WIFI_NETWORKS) {
     Serial.println(F("Maximum WiFi networks reached"));
-    return;
+    return 1;
   }
   
   // Check if SSID already exists
@@ -533,7 +533,7 @@ void addWiFiNetwork(const String& ssid, const String& password) {
       wifiConfigs[i].active = true;
       saveWiFiConfig();
       Serial.println(F("WiFi network updated"));
-      return;
+      return 0;
     }
   }
   
@@ -547,6 +547,7 @@ void addWiFiNetwork(const String& ssid, const String& password) {
   numWifiConfigs++;
   saveWiFiConfig();
   Serial.println(F("WiFi network added"));
+  return 0;
 }
 
 void deleteWiFiNetwork(uint8_t index) {
@@ -991,8 +992,12 @@ void handleWiFiAdd() {
     String password = server.arg("password");
     
     if (ssid.length() > 0 && ssid.length() <= WIFI_SSID_LENGTH) {
-      addWiFiNetwork(ssid, password);
-      response = "{\"success\":true,\"message\":\"Network added successfully\"}";
+      uint8_t result = addWiFiNetwork(ssid, password);
+      if (result == 0) {
+        response = "{\"success\":true,\"message\":\"Network added successfully\"}";
+      } else {
+        response = "{\"success\":false,\"message\":\"Failed to add network\"}";
+      }
     } else {
       response = "{\"success\":false,\"message\":\"Invalid SSID length\"}";
     }
