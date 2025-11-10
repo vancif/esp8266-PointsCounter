@@ -114,7 +114,7 @@ bool clockPaused = true;
 
 // ************************* CUSTOM CHARACTERS ******************************
 
-const byte customChars[5][8] PROGMEM = {
+const byte customChars[6][8] PROGMEM = {
   // Degree symbol
   {0b11100, 0b10100, 0b11100, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000},
   // Left arrow
