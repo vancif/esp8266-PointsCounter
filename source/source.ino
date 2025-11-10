@@ -977,7 +977,7 @@ void handleWiFiList() {
   json += "]}";
   
   server.send(200, "application/json", json);
-  yield();
+  yield(); // Allow WiFi stack to process
   LED_OFF;
 }
 
@@ -1001,7 +1001,7 @@ void handleWiFiAdd() {
   }
   
   server.send(200, "application/json", response);
-  yield();
+  yield(); // Allow WiFi stack to process
   LED_OFF;
 }
 
@@ -1024,6 +1024,7 @@ void handleWiFiDelete() {
   }
   
   server.send(200, "application/json", response);
+  yield(); // Allow WiFi stack to process
   LED_OFF;
 }
 
@@ -1088,7 +1089,7 @@ void handleAction() {
   
   // Send minimal response quickly
   server.send(200, "application/json", "{\"ok\":1}");
-  yield();
+  yield(); // Allow WiFi stack to process
   LED_OFF;
 }
 
