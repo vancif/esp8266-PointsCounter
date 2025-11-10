@@ -114,7 +114,7 @@ bool clockPaused = true;
 
 // ************************* CUSTOM CHARACTERS ******************************
 
-const byte customChars[4][8] PROGMEM = {
+const byte customChars[5][8] PROGMEM = {
   // Degree symbol
   {0b11100, 0b10100, 0b11100, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000},
   // Left arrow
@@ -122,7 +122,11 @@ const byte customChars[4][8] PROGMEM = {
   // Right arrow
   {0b00000, 0b00100, 0b00010, 0b11111, 0b11111, 0b00010, 0b00100, 0b00000},
   // Hourglass
-  {0b00000, 0b11111, 0b01110, 0b00100, 0b01110, 0b11111, 0b00000, 0b00000}
+  {0b00000, 0b11111, 0b01110, 0b00100, 0b01110, 0b11111, 0b00000, 0b00000},
+  // à
+  {0b00010, 0b00001, 0b01110, 0b00001, 0b01111, 0b10001, 0b01111, 0b00000},
+  // è
+  {0b00010, 0b00001, 0b01110, 0b10001, 0b11110, 0b10000, 0b01110, 0b00000}
 };
 
 // ************************* HTML STORED IN PROGMEM ******************************
@@ -1400,8 +1404,10 @@ void initializeOTA() {
     else // U_SPIFFS
       type = "filesystem";
     clearDisplay();
-    snprintf(line[0], LCD_COLS + 1, "*** OTA Update ***");
-    snprintf(line[1], LCD_COLS + 1, "Updating: %s", type.c_str());
+    snprintf(line[0], LCD_COLS + 1, "**** OTA Update ****");
+    snprintf(line[1], LCD_COLS + 1, " Update in progress ");
+    snprintf(line[2], LCD_COLS + 1, "    Please wait...  ");
+    snprintf(line[3], LCD_COLS + 1, "********************");
     printLines();
   });
 
@@ -1411,6 +1417,24 @@ void initializeOTA() {
 
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    // Update progress on display
+    // let's fill line[3] with ---> according to progress
+    // calculate number of "-" to show (from 0 to 19)
+    // last char is always ">"
+    uint8_t progressChars = floor((progress * 19) / total);
+    // Fill line[3] with progress bar: dashes, '>', then spaces
+    uint8_t i = 0;
+    for (; i < progressChars && i < LCD_COLS - 1; i++) {
+      line[3][i] = '-';
+    }
+    if (i < LCD_COLS) {
+      line[3][i++] = '>';
+    }
+    for (; i < LCD_COLS; i++) {
+      line[3][i] = ' ';
+    }
+    line[3][LCD_COLS] = '\0';
+    printLines();
   });
 
   ArduinoOTA.onError([](ota_error_t error) {
