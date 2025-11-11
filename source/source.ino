@@ -851,11 +851,11 @@ void initializeButtonDebounce() {
     buttonDebounce = BUTTON_DEBOUNCE;
     Serial.print(F("Button debounce time set to default: "));
     Serial.print(buttonDebounce);
-    return;
+  } else {
+    EEPROM.get(230, buttonDebounce);
+    Serial.print(F("Button debounce time: "));
+    Serial.print(buttonDebounce);
   }
-  EEPROM.get(230, buttonDebounce);
-  Serial.print(F("Button debounce time: "));
-  Serial.print(buttonDebounce);
 }
 
 // ************************* DISPLAY MANAGEMENT ******************************
@@ -1467,6 +1467,7 @@ void processTelnetCommand(String command, WiFiClient& client) {
     }
     buttonDebounce = debounceTime;
     EEPROM.put(230, buttonDebounce);
+    EEPROM.commit();
     client.print(F("Button debounce time set to "));
     client.print(buttonDebounce);
     client.println(F(" ms"));
