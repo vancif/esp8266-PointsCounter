@@ -388,7 +388,7 @@ void buttonMinus();
 void buttonOption();
 
 // Set button debounce time
-void getButtonDebounce();
+void initializeButtonDebounce();
 
 // OTA
 void initializeOTA();
@@ -840,7 +840,19 @@ void buttonManagement() {
   }
 }
 
-void getButtonDebounce() {
+void initializeButtonDebounce() {
+  uint16_t debounceMagic;
+  EEPROM.get(234, debounceMagic);
+  if (debounceMagic != 0xDBC0) {
+    // First time setup, write default debounce value
+    EEPROM.put(234, (uint16_t)0xDBC0);
+    EEPROM.put(230, (int)BUTTON_DEBOUNCE);
+    EEPROM.commit();
+    buttonDebounce = BUTTON_DEBOUNCE;
+    Serial.print(F("Button debounce time set to default: "));
+    Serial.print(buttonDebounce);
+    return;
+  }
   EEPROM.get(230, buttonDebounce);
   Serial.print(F("Button debounce time: "));
   Serial.print(buttonDebounce);
@@ -1443,7 +1455,7 @@ void processTelnetCommand(String command, WiFiClient& client) {
     client.print((uint8_t)value, HEX);
     client.println();
   } else if (command.startsWith("debounce set")) {
-    int firstSpace = command.indexOf(' ', 14);  // Find space after value
+    int firstSpace = command.indexOf(' ', 12);  // Find space after value
     if (firstSpace == -1) {
       client.println(F("Usage: debounce set <milliseconds>"));
       return;
@@ -1892,7 +1904,7 @@ void setup() {
   
   initializeOTA();
 
-  getButtonDebounce();
+  initializeButtonDebounce();
   
   // Show final message
   printLines();
