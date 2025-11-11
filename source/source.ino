@@ -623,7 +623,7 @@ void initializeDisplay() {
   delay(100);
   
   // Load custom characters
-  for (uint8_t i = 0; i < 4; i++) {
+  for (uint8_t i = 0; i < 6; i++) {
     byte charData[8];
     memcpy_P(charData, customChars[i], 8);
     lcd.createChar(i, charData);
@@ -1112,6 +1112,9 @@ void handleGameSet() {
       
       if (name.length() > 0) {
         numPlayers++;
+        // Replace special characters with custom LCD characters
+        name.replace("à", "\x04"); // Custom character 4 for à
+        name.replace("è", "\x05"); // Custom character 5 for è
         playerName[i] = name.substring(0, NAME_LENGTH); // Limit name length
         playerPoints[i][0] = constrain(points.toInt(), 0, 255); // Limit points range
       } else {
