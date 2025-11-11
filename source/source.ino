@@ -6,8 +6,6 @@
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
-
-// Telnet includes
 #include <WiFiServer.h>
 
 // ************************* CONSTANTS AND CONFIGURATION ******************************
@@ -371,7 +369,7 @@ void deleteWiFiNetwork(uint8_t index);
 
 // Web handlers
 void handleRoot();
-void handleAction();
+void handleGameSet();
 void handleWiFiConfig();
 void handleWiFiList();
 void handleWiFiAdd();
@@ -767,7 +765,7 @@ void initializeWiFi() {
 
 void setupWebServer() {
   server.on("/", HTTP_GET, handleRoot);
-  server.on("/update", HTTP_POST, handleAction);
+  server.on("/update", HTTP_POST, handleGameSet);
   server.on("/wifi", HTTP_GET, handleWiFiConfig);
   server.on("/wifi/list", HTTP_GET, handleWiFiList);
   server.on("/wifi/add", HTTP_POST, handleWiFiAdd);
@@ -1097,7 +1095,7 @@ void handleReboot() {
   ESP.restart();
 }
 
-void handleAction() {
+void handleGameSet() {
   LED_ON;
   
   if (server.arg("create") == "true") {
@@ -1482,29 +1480,30 @@ void processTelnetCommand(String command, WiFiClient& client) {
 void showTelnetHelp(WiFiClient& client) {
   client.println(F("Available Commands:"));
   client.println(F("=================="));
-  client.println(F("help               - Show this help"));
-  client.println(F("status             - Show system status"));
-  client.println(F("players            - List all players and points"));
-  client.println(F("points <p> <n>     - Set player <p> to <n> points"));
-  client.println(F("save               - Save game data"));
-  client.println(F("load               - Load game data"));
-  client.println(F("reset20            - Reset all players to 20 points"));
-  client.println(F("reset40            - Reset all players to 40 points"));
-  client.println(F("wifi               - Show WiFi status"));
-  client.println(F("wifilist           - List saved WiFi networks"));
-  client.println(F("memory             - Show memory info"));
-  client.println(F("uptime             - Show device uptime"));
-  client.println(F("display            - Show current display state"));
-  client.println(F("main               - Switch to main display"));
-  client.println(F("plus               - Simulate plus button"));
-  client.println(F("minus              - Simulate minus button"));
-  client.println(F("enter              - Simulate enter button"));
-  client.println(F("change             - Simulate change button"));
-  client.println(F("eeprom write <a> <v> - Write value <v> to EEPROM address <a>"));
-  client.println(F("eeprom read all    - Read all EEPROM contents"));
-  client.println(F("eeprom read byte <a> - Read byte from EEPROM address <a>"));
-  client.println(F("reboot             - Restart the device"));
-  client.println(F("quit/exit          - Close Telnet connection"));
+  client.println(F("help                      - Show this help"));
+  client.println(F("status                    - Show system status"));
+  client.println(F("players                   - List all players and points"));
+  client.println(F("points <p> <n>            - Set player <p> to <n> points"));
+  client.println(F("save                      - Save game data"));
+  client.println(F("load                      - Load game data"));
+  client.println(F("reset20                   - Reset all players to 20 points"));
+  client.println(F("reset40                   - Reset all players to 40 points"));
+  client.println(F("wifi                      - Show WiFi status"));
+  client.println(F("wifilist                  - List saved WiFi networks"));
+  client.println(F("memory                    - Show memory info"));
+  client.println(F("uptime                    - Show device uptime"));
+  client.println(F("display                   - Show current display state"));
+  client.println(F("main                      - Switch to main display"));
+  client.println(F("plus                      - Simulate plus button"));
+  client.println(F("minus                     - Simulate minus button"));
+  client.println(F("enter                     - Simulate enter button"));
+  client.println(F("change                    - Simulate change button"));
+  client.println(F("eeprom write <a> <v>      - Write value <v> (dec/hex) to EEPROM address <a>"));
+  client.println(F("eeprom read all           - Read all EEPROM contents"));
+  client.println(F("eeprom read byte <a>      - Read byte from EEPROM address <a>"));
+  client.println(F("debounce set <ms>         - Set button debounce time (0-5000 ms)"));
+  client.println(F("reboot                    - Restart the device"));
+  client.println(F("quit/exit                 - Close Telnet connection"));
 }
 
 void showTelnetStatus(WiFiClient& client) {
