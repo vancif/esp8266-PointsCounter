@@ -841,7 +841,7 @@ void buttonManagement() {
 }
 
 void getButtonDebounce() {
-  EEEPROM.get(230, buttonDebounce);
+  EEPROM.get(230, buttonDebounce);
   Serial.print(F("Button debounce time: "));
   Serial.print(buttonDebounce);
 }
