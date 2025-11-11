@@ -30,7 +30,7 @@
 
 // Button Configuration
 #define LONG_PRESS_TIME 350
-#define BUTTON_DEBOUNCE 150
+#define BUTTON_DEBOUNCE 250
 
 // Pin Definitions
 #define BTN_MINUS D5
