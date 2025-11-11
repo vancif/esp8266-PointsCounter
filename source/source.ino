@@ -117,6 +117,7 @@ unsigned long pressedTime = 0;
 unsigned long releasedTime = 0;
 unsigned long lastButtonRead = 0;
 unsigned long lastButtonAction = 0;
+int buttonDebounce = BUTTON_DEBOUNCE;
 
 // Clock state
 unsigned long p1_start_time = 0;
@@ -385,6 +386,9 @@ void buttonEnter();
 void buttonPlus();
 void buttonMinus();
 void buttonOption();
+
+// Set button debounce time
+void getButtonDebounce();
 
 // OTA
 void initializeOTA();
@@ -793,7 +797,7 @@ void buttonManagement() {
   unsigned long currentTime = millis();
   
   // Debounce - prevent actions too close together
-  if (currentTime - lastButtonAction < BUTTON_DEBOUNCE) {
+  if (currentTime - lastButtonAction < buttonDebounce) {
     return;
   }
   
@@ -834,6 +838,12 @@ void buttonManagement() {
     buttonOption();
     lastButtonAction = currentTime;
   }
+}
+
+void getButtonDebounce() {
+  EEEPROM.get(230, buttonDebounce);
+  Serial.print(F("Button debounce time: "));
+  Serial.print(buttonDebounce);
 }
 
 // ************************* DISPLAY MANAGEMENT ******************************
@@ -1432,6 +1442,23 @@ void processTelnetCommand(String command, WiFiClient& client) {
     }
     client.print((uint8_t)value, HEX);
     client.println();
+  } else if (command.startsWith("debounce set")) {
+    int firstSpace = command.indexOf(' ', 14);  // Find space after value
+    if (firstSpace == -1) {
+      client.println(F("Usage: debounce set <milliseconds>"));
+      return;
+    }
+    int debounceTime = command.substring(firstSpace + 1).toInt();
+    if (debounceTime < 0 || debounceTime > 5000) {
+      client.println(F("Invalid debounce time (0-5000 ms)"));
+      return;
+    }
+    buttonDebounce = debounceTime;
+    EEPROM.put(230, buttonDebounce);
+    client.print(F("Button debounce time set to "));
+    client.print(buttonDebounce);
+    client.println(F(" ms"));
+
   } else if (command.length() > 0) {
     client.print(F("Unknown command: "));
     client.println(command);
@@ -1864,6 +1891,8 @@ void setup() {
   }
   
   initializeOTA();
+
+  getButtonDebounce();
   
   // Show final message
   printLines();
