@@ -870,7 +870,10 @@ void updateDisplay() {
 
 void updateMainDisplay() {
   // Clear all lines first
-  clearDisplay();
+  // not using clearDisplay() to avoid unnecessary screen cleaning flicker
+  for (uint8_t i = 0; i < LCD_ROWS; i++) {
+    snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
+  }
   
   // Display player information
   for (uint8_t i = 0; i < LCD_ROWS; i++) {
