@@ -370,15 +370,9 @@ void initializeButtonDebounce();
 void initializeOTA();
 
 // Utility functions
-template<typename T> const T& getArrayElement(const T* array, int pos, int length);
 void resetPlayerPoints(uint8_t startingPoints);
 
 // ************************* UTILITY FUNCTIONS ******************************
-
-template<typename T> 
-const T& getArrayElement(const T* array, int pos, int length) {
-  return array[pos % length];
-}
 
 void resetPlayerPoints(uint8_t startingPoints) {
   for (uint8_t i = 0; i < MAX_PLAYERS; i++) {
