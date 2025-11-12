@@ -3,6 +3,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WiFiMulti.h>
+#include "../utils/customchars.h"
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
@@ -52,12 +53,6 @@
 // LED Control
 #define LED_ON digitalWrite(LED_BUILTIN, LOW)
 #define LED_OFF digitalWrite(LED_BUILTIN, HIGH)
-
-// Custom Characters
-#define CHAR_DEGREE 0
-#define CHAR_LEFT_ARROW 1
-#define CHAR_RIGHT_ARROW 2
-#define CHAR_HOURGLASS 3
 
 // ************************* ENUMS ******************************
 
@@ -123,23 +118,6 @@ unsigned long p1_time = 0;
 unsigned long p2_start_time = 0;
 unsigned long p2_time = 0;
 bool clockPaused = true;
-
-// ************************* CUSTOM CHARACTERS ******************************
-
-const byte customChars[6][8] PROGMEM = {
-  // Degree symbol
-  {0b11100, 0b10100, 0b11100, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000},
-  // Left arrow
-  {0b00000, 0b00100, 0b01000, 0b11111, 0b11111, 0b01000, 0b00100, 0b00000},
-  // Right arrow
-  {0b00000, 0b00100, 0b00010, 0b11111, 0b11111, 0b00010, 0b00100, 0b00000},
-  // Hourglass
-  {0b00000, 0b11111, 0b01110, 0b00100, 0b01110, 0b11111, 0b00000, 0b00000},
-  // à
-  {0b00010, 0b00001, 0b01110, 0b00001, 0b01111, 0b10001, 0b01111, 0b00000},
-  // è
-  {0b00010, 0b00001, 0b01110, 0b10001, 0b11111, 0b10000, 0b01110, 0b00000}
-};
 
 // ************************* HTML STORED IN PROGMEM ******************************
 
@@ -622,12 +600,8 @@ void initializeDisplay() {
   lcd.clear();
   delay(100);
   
-  // Load custom characters
-  for (uint8_t i = 0; i < 6; i++) {
-    byte charData[8];
-    memcpy_P(charData, customChars[i], 8);
-    lcd.createChar(i, charData);
-  }
+  // Load custom characters using the utility function
+  initializeCustomCharacters(lcd);
 
   // Clear all line buffers
   for (uint8_t i = 0; i < LCD_ROWS; i++) {
@@ -896,9 +870,7 @@ void updateDisplay() {
 
 void updateMainDisplay() {
   // Clear all lines first
-  for (uint8_t i = 0; i < LCD_ROWS; i++) {
-    snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
-  }
+  clearDisplay();
   
   // Display player information
   for (uint8_t i = 0; i < LCD_ROWS; i++) {
@@ -1113,8 +1085,8 @@ void handleGameSet() {
       if (name.length() > 0) {
         numPlayers++;
         // Replace special characters with custom LCD characters
-        name.replace("à", "\x04"); // Custom character 4 for à
-        name.replace("è", "\x05"); // Custom character 5 for è
+        name.replace("à", CHAR_A_ACCENT); // Custom character 4 for à
+        name.replace("è", CHAR_E_ACCENT); // Custom character 5 for è
         playerName[i] = name.substring(0, NAME_LENGTH); // Limit name length
         playerPoints[i][0] = constrain(points.toInt(), 0, 255); // Limit points range
       } else {
