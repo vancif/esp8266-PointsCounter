@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <LiquidCrystal_I2C.h>
+#include "customchars.cpp"
 
 // Custom Characters Definitions
 #define CHAR_DEGREE 0

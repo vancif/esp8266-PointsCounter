@@ -3,7 +3,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WiFiMulti.h>
-#include "../utils/customchars.h"
+#include "utils/customchars.h"
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
@@ -1085,8 +1085,8 @@ void handleGameSet() {
       if (name.length() > 0) {
         numPlayers++;
         // Replace special characters with custom LCD characters
-        name.replace("à", CHAR_A_ACCENT); // Custom character 4 for à
-        name.replace("è", CHAR_E_ACCENT); // Custom character 5 for è
+        name.replace("à", String((char)CHAR_A_ACCENT)); // Custom character 4 for à
+        name.replace("è", String((char)CHAR_A_ACCENT)); // Custom character 5 for è
         playerName[i] = name.substring(0, NAME_LENGTH); // Limit name length
         playerPoints[i][0] = constrain(points.toInt(), 0, 255); // Limit points range
       } else {
