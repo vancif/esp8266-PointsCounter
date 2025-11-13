@@ -3,12 +3,13 @@
 
 #include <Arduino.h>
 #include <LiquidCrystal_I2C.h>
+#include "../constants.h"
 
 // Forward declarations for global variables
 extern LiquidCrystal_I2C lcd;
-extern char line[4][21];  // LCD_ROWS x (LCD_COLS + 1) - more explicit sizing
+extern char line[LCD_ROWS][LCD_COLS + 1];  // LCD_ROWS x (LCD_COLS + 1) - more explicit sizing
 extern String playerName[];
-extern uint8_t playerPoints[][4];  // MAX_PLAYERS
+extern uint8_t playerPoints[MAX_PLAYERS][MAX_PLAYERS];
 extern uint8_t numPlayers;
 extern uint8_t activeAction_Main;
 extern uint8_t activeAction_Detail;
