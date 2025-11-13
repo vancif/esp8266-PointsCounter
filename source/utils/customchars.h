@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 #include <LiquidCrystal_I2C.h>
-#include "customchars.cpp"
 
 // Custom Characters Definitions
 #define CHAR_DEGREE 0
@@ -18,5 +17,8 @@ extern const byte customChars[6][8] PROGMEM;
 
 // Function to initialize custom characters on LCD
 void initializeCustomCharacters(LiquidCrystal_I2C& lcd);
+
+// Include l'implementazione (workaround per le limitazioni dell'IDE Arduino)
+#include "customchars_impl.h"
 
 #endif // CUSTOMCHARS_H

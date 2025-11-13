@@ -3,11 +3,15 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WiFiMulti.h>
-#include "utils/customchars.h"
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
 #include <WiFiServer.h>
+
+// Include our modular components
+#include "utils/customchars.h"
+#include "utils/webpages.h"
+#include "modules/display.h"
 
 // ************************* CONSTANTS AND CONFIGURATION ******************************
 
@@ -56,13 +60,7 @@
 
 // ************************* ENUMS ******************************
 
-enum DisplayState {
-  STATE_NULL,
-  STATE_MAIN,
-  STATE_DETAIL,
-  STATE_UTILS,
-  STATE_CLOCK
-};
+// DisplayState enum moved to display.h
 
 // ************************* STRUCTS ******************************
 
@@ -119,198 +117,11 @@ unsigned long p2_start_time = 0;
 unsigned long p2_time = 0;
 bool clockPaused = true;
 
-// ************************* HTML STORED IN PROGMEM ******************************
-
-const char GAME_HTML_PAGE[] PROGMEM = R"rawliteral(
-<html>
-<head><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body>
-<h2>Points Counter Game</h2>
-<input maxlength="6" size="10" type="text" id="n0"><input maxlength="2" size="3" type="text" id="p0"><br><br>
-<input maxlength="6" size="10" type="text" id="n1"><input maxlength="2" size="3" type="text" id="p1"><br><br>
-<input maxlength="6" size="10" type="text" id="n2"><input maxlength="2" size="3" type="text" id="p2"><br><br>
-<input maxlength="6" size="10" type="text" id="n3"><input maxlength="2" size="3" type="text" id="p3"><br><br>
-<button onclick="send()">Update</button><br><br>
-<button onclick="operate('1')" style="width:75px;height:75px;font:15pt Arial;">+</button>
-<button onclick="operate('2')" style="width:75px;height:75px;font:15pt Arial;">-</button><br><br>
-<button onclick="operate('3')" style="width:75px;height:75px;font:15pt Arial;">CH</button>
-<button onclick="operate('4')" style="width:75px;height:75px;font:15pt Arial;">ENT</button>
-<button onclick="operate('5')" style="width:75px;height:75px;font:15pt Arial;">OPT</button><br><br>
-<a href="/wifi">WiFi Settings</a>
-<script>
-function operate(act){
-  if(window.navigator.vibrate) window.navigator.vibrate(100);
-  var data = new FormData();
-  data.append("action", act);
-  data.append("create", "false");
-  fetch("/update", {method: "POST", body: data});
-}
-function send(){
-  if(window.navigator.vibrate) window.navigator.vibrate(100);
-  var data = new FormData();
-  data.append("create", "true");
-  for(let i = 0; i < 4; i++){
-    data.append("n" + i, document.getElementById("n" + i).value);
-    data.append("p" + i, document.getElementById("p" + i).value);
-  }
-  fetch("/update", {method: "POST", body: data});
-}
-</script>
-</body>
-</html>
-)rawliteral";
-
-const char WIFI_HTML_PAGE[] PROGMEM = R"rawliteral(
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WiFi Configuration</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    .wifi-item { background: #f0f0f0; margin: 10px 0; padding: 10px; border-radius: 5px; }
-    .wifi-form { background: #e0e0e0; padding: 15px; border-radius: 5px; margin: 20px 0; }
-    input[type="text"], input[type="password"] { width: 200px; padding: 5px; margin: 5px; }
-    button { padding: 10px 15px; margin: 5px; }
-    .delete-btn { background: #ff4444; color: white; }
-  </style>
-</head>
-<body>
-<h2>WiFi Configuration</h2>
-
-<div id="availableNetworks">
-  <h3>Available Networks:</h3>
-  <!-- Networks will be populated here -->
-  <button onclick="scanNetworks()">Scan for Networks</button>
-</div>
-
-<div id="savedNetworks">
-  <h3>Saved Networks:</h3>
-  <!-- Networks will be populated here -->
-</div>
-
-<div class="wifi-form">
-  <h3>Add New Network:</h3>
-  <form id="wifiForm">
-    <label>SSID:</label><br>
-    <input type="text" id="newSsid" name="ssid" maxlength="32" required><br>
-    <label>Password:</label><br>
-    <input type="password" id="newPassword" name="password" maxlength="32"><br><br>
-    <button type="submit">Add Network</button>
-  </form>
-</div>
-
-<div>
-  <button onclick="window.location.href='/'">Back to Game</button>
-  <button onclick="reboot()">Reboot Device</button>
-</div>
-
-<script>
-// Load saved networks
-function loadNetworks() {
-  fetch('/wifi/list')
-    .then(response => response.json())
-    .then(data => {
-      const container = document.getElementById('savedNetworks');
-      let html = '<h3>Saved Networks:</h3>';
-      
-      if (data.networks && data.networks.length > 0) {
-        data.networks.forEach((network, index) => {
-          html += `
-            <div class="wifi-item">
-              <strong>${network.ssid}</strong>
-              <button class="delete-btn" onclick="deleteNetwork(${index})">Delete</button>
-            </div>`;
-        });
-      } else {
-        html += '<p>No networks saved</p>';
-      }
-      container.innerHTML = html;
-    });
-}
-
-// Add new network
-document.getElementById('wifiForm').addEventListener('submit', function(e) {
-  e.preventDefault();
-  const ssid = document.getElementById('newSsid').value;
-  const password = document.getElementById('newPassword').value;
-  
-  const data = new FormData();
-  data.append('ssid', ssid);
-  data.append('password', password);
-  
-  fetch('/wifi/add', {method: 'POST', body: data})
-    .then(response => response.json())
-    .then(result => {
-      if (result.success) {
-        document.getElementById('newSsid').value = '';
-        document.getElementById('newPassword').value = '';
-        loadNetworks();
-        alert('Network added successfully!');
-      } else {
-        alert('Error: ' + result.message);
-      }
-    });
-});
-
-// Delete network
-function deleteNetwork(index) {
-  if (confirm('Are you sure you want to delete this network?')) {
-    const data = new FormData();
-    data.append('index', index);
-    
-    fetch('/wifi/delete', {method: 'POST', body: data})
-      .then(response => response.json())
-      .then(result => {
-        if (result.success) {
-          loadNetworks();
-          alert('Network deleted successfully!');
-        } else {
-          alert('Error: ' + result.message);
-        }
-      });
-  }
-}
-
-// populate network SSID on click
-function populateNetwork(ssid) {
-  document.getElementById('newSsid').value = ssid;
-}
-
-// Scan networks
-function scanNetworks() {
-  fetch('/wifi/scan')
-    .then(response => response.json())
-    .then(data => {
-      let ssidList = 'Available Networks:<br>';
-      data.networks.forEach(network => {
-        ssidList += '<span>' + network.ssid + ' - RSSI: ' + network.rssi + 'dBm</span><button onclick="populateNetwork(\'' + network.ssid + '\')">Connect</button><br>';
-      });
-      document.getElementById('availableNetworks').innerHTML = '<h3>Available Networks:</h3><pre>' + ssidList + '</pre>';
-    });
-}
-
-// Reboot device
-function reboot() {
-  if (confirm('Are you sure you want to reboot the device?')) {
-    fetch('/reboot', {method: 'POST'})
-      .then(() => {
-        alert('Device rebooting... Please wait and reconnect.');
-      });
-  }
-}
-
-// Load networks on page load
-loadNetworks();
-</script>
-</body>
-</html>
-)rawliteral";
-
 // ************************* FUNCTION PROTOTYPES ******************************
 
 // Setup functions
 void initializeHardware();
-void initializeDisplay();
+// initializeDisplay() moved to display.h/display.cpp
 void initializeWiFi();
 void setupWebServer();
 void setupTelnetServer();
@@ -326,14 +137,7 @@ void showTelnetStatus(WiFiClient& client);
 // Button handling
 void buttonManagement();
 
-// Display management
-void printLines();
-void updateDisplay();
-void updateMainDisplay();
-void updateDetailDisplay();
-void updateUtilsDisplay();
-void updateClockDisplay();
-void clearDisplay();
+// Display management functions moved to display.h/display.cpp
 
 // Data management
 void saveData();
@@ -586,29 +390,7 @@ void initializeHardware() {
   Serial.println(F("\nESP8266 Points Counter Starting..."));
 }
 
-void initializeDisplay() {
-  lcd.init();
-  lcd.backlight();
-  
-  // Force complete LCD clear
-  lcd.clear();
-  delay(100);
-  
-  // Load custom characters using the utility function
-  initializeCustomCharacters(lcd);
-
-  // Clear all line buffers
-  for (uint8_t i = 0; i < LCD_ROWS; i++) {
-    snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, "");
-  }
-  
-  // Show boot message using line buffers
-  snprintf(line[0], LCD_COLS + 1, "ESP8266 Points");
-  snprintf(line[1], LCD_COLS + 1, "Counter v2.0");  
-  snprintf(line[2], LCD_COLS + 1, "Booting up...");
-  printLines();
-  delay(1000);
-}
+// initializeDisplay() moved to modules/display.cpp
 
 // ************************* WIFI INITIALIZATION ******************************
 
@@ -825,149 +607,7 @@ void initializeButtonDebounce() {
 }
 
 // ************************* DISPLAY MANAGEMENT ******************************
-
-void clearDisplay() {
-  for (uint8_t i = 0; i < LCD_ROWS; i++) {
-    snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
-  }
-  printLines();
-}
-
-void printLines() {
-  for (uint8_t i = 0; i < LCD_ROWS; i++) {
-    lcd.setCursor(0, i);
-    lcd.print(line[i]);
-  }
-}
-
-void updateDisplay() {
-  switch (displayState) {
-    case STATE_MAIN:
-      updateMainDisplay();
-      break;
-    case STATE_DETAIL:
-      updateDetailDisplay();
-      break;
-    case STATE_UTILS:
-      updateUtilsDisplay();
-      break;
-    case STATE_CLOCK:
-      updateClockDisplay();
-      break;
-    case STATE_NULL:
-    default:
-      // Display connection info or default state
-      break;
-  }
-  printLines();
-}
-
-void updateMainDisplay() {
-  // Clear all lines first
-  // not using clearDisplay() to avoid unnecessary screen cleaning flicker
-  for (uint8_t i = 0; i < LCD_ROWS; i++) {
-    snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
-  }
-  
-  // Display player information
-  for (uint8_t i = 0; i < LCD_ROWS; i++) {
-    if (i < numPlayers) {
-      snprintf(line[i], LCD_COLS + 1, " %-6s: %2d         ", 
-               playerName[i].c_str(), playerPoints[i][0]);
-    }
-  }
-  
-  // Add "Utils" text to bottom right
-  if (LCD_ROWS >= 4) {
-    strncpy(&line[3][14], "Utils", 5);
-  }
-  
-  // Handle randomize animation
-  if (randomizeStart && random(0, 11) <= 9) {
-    activeAction_Main = (activeAction_Main + 1) % numPlayers;
-    line[0][19] = CHAR_HOURGLASS;
-    delay(250);
-  } else {
-    randomizeStart = false;
-  }
-  
-  // Add selection indicators
-  if (activeAction_Main < MAX_PLAYERS) {
-    line[activeAction_Main][0] = CHAR_RIGHT_ARROW;
-  } else if (activeAction_Main == MAX_PLAYERS) {
-    line[3][19] = CHAR_LEFT_ARROW;
-  }
-}
-
-void updateDetailDisplay() {
-  snprintf(line[0], LCD_COLS + 1, "Comm.Dmg %-6s P:%2d", 
-           playerName[activeAction_Main].c_str(), playerPoints[activeAction_Main][0]);
-
-  for (uint8_t i = 1; i < LCD_ROWS; i++) {
-    uint8_t targetPlayer = (activeAction_Main + i) % MAX_PLAYERS;
-    snprintf(line[i], LCD_COLS + 1, "%-6s: %2d          ", 
-             playerName[targetPlayer].c_str(), playerPoints[activeAction_Main][i]);
-  }
-  
-  // Add selection indicator
-  if (activeAction_Detail >= 1 && activeAction_Detail <= 3) {
-    line[activeAction_Detail][11] = CHAR_LEFT_ARROW;
-  }
-}
-
-void updateUtilsDisplay() {
-  snprintf(line[0], LCD_COLS + 1, " Die Roll      SAVE ");
-  snprintf(line[1], LCD_COLS + 1, " Reset 20      LOAD ");
-  snprintf(line[2], LCD_COLS + 1, " Reset 40     CLOCK ");
-  snprintf(line[3], LCD_COLS + 1, "        BACK        ");
-  
-  // Add selection indicators
-  switch (activeAction_Utils) {
-    case 0: line[0][0] = CHAR_RIGHT_ARROW; break;
-    case 1: line[1][0] = CHAR_RIGHT_ARROW; break;
-    case 2: line[2][0] = CHAR_RIGHT_ARROW; break;
-    case 3: line[0][19] = CHAR_LEFT_ARROW; break;
-    case 4: line[1][19] = CHAR_LEFT_ARROW; break;
-    case 5: line[2][19] = CHAR_LEFT_ARROW; break;
-    case 6: line[3][12] = CHAR_LEFT_ARROW; break;
-  }
-}
-
-void updateClockDisplay() {
-  unsigned long now = millis();
-  
-  // Update running timer for active player
-  if (!clockPaused) {
-    if (activeAction_Clock == 1 && p1_start_time > 0) {
-      p1_time += (now - p1_start_time);
-      p1_start_time = now;
-    } else if (activeAction_Clock == 2 && p2_start_time > 0) {
-      p2_time += (now - p2_start_time);
-      p2_start_time = now;
-    }
-  }
-  
-  // Format time display
-  unsigned long totalTime = p1_time + p2_time;
-  
-  snprintf(line[0], LCD_COLS + 1, "       CLOCK        ");
-  snprintf(line[1], LCD_COLS + 1, "P1 %02lu:%02lu    P2 %02lu:%02lu",
-           p1_time / 60000, (p1_time % 60000) / 1000,
-           p2_time / 60000, (p2_time % 60000) / 1000);
-  snprintf(line[2], LCD_COLS + 1, "                    ");
-  snprintf(line[3], LCD_COLS + 1, "    Total  %02lu:%02lu    ",
-           totalTime / 60000, (totalTime % 60000) / 1000);
-  
-  // Add selection indicators
-  switch (activeAction_Clock) {
-    case 1: line[1][8] = CHAR_LEFT_ARROW; break;
-    case 2: line[1][11] = CHAR_RIGHT_ARROW; break;
-  }
-  
-  if (clockPaused) {
-    line[0][19] = CHAR_HOURGLASS;
-  }
-}
+// Display functions moved to modules/display.cpp
 
 // ************************* WEB HANDLERS ******************************
 

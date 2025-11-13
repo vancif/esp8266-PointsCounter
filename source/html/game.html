@@ -1,0 +1,36 @@
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body>
+<h2>Points Counter Game</h2>
+<input maxlength="6" size="10" type="text" id="n0"><input maxlength="2" size="3" type="text" id="p0"><br><br>
+<input maxlength="6" size="10" type="text" id="n1"><input maxlength="2" size="3" type="text" id="p1"><br><br>
+<input maxlength="6" size="10" type="text" id="n2"><input maxlength="2" size="3" type="text" id="p2"><br><br>
+<input maxlength="6" size="10" type="text" id="n3"><input maxlength="2" size="3" type="text" id="p3"><br><br>
+<button onclick="send()">Update</button><br><br>
+<button onclick="operate('1')" style="width:75px;height:75px;font:15pt Arial;">+</button>
+<button onclick="operate('2')" style="width:75px;height:75px;font:15pt Arial;">-</button><br><br>
+<button onclick="operate('3')" style="width:75px;height:75px;font:15pt Arial;">CH</button>
+<button onclick="operate('4')" style="width:75px;height:75px;font:15pt Arial;">ENT</button>
+<button onclick="operate('5')" style="width:75px;height:75px;font:15pt Arial;">OPT</button><br><br>
+<a href="/wifi">WiFi Settings</a>
+<script>
+function operate(act){
+  if(window.navigator.vibrate) window.navigator.vibrate(100);
+  var data = new FormData();
+  data.append("action", act);
+  data.append("create", "false");
+  fetch("/update", {method: "POST", body: data});
+}
+function send(){
+  if(window.navigator.vibrate) window.navigator.vibrate(100);
+  var data = new FormData();
+  data.append("create", "true");
+  for(let i = 0; i < 4; i++){
+    data.append("n" + i, document.getElementById("n" + i).value);
+    data.append("p" + i, document.getElementById("p" + i).value);
+  }
+  fetch("/update", {method: "POST", body: data});
+}
+</script>
+</body>
+</html>
