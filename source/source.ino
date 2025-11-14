@@ -10,6 +10,10 @@
 
 // ************************* CONSTANTS AND CONFIGURATION ******************************
 
+// Version Information
+
+#define VERSION_STRING "v2.0.2"
+
 // System Configuration
 #define LOOP_DELAY 15  // milliseconds
 
@@ -118,10 +122,8 @@ unsigned long lastButtonAction = 0;
 int buttonDebounce = BUTTON_DEBOUNCE;
 
 // Clock state
-unsigned long p1_start_time = 0;
-unsigned long p1_time = 0;
-unsigned long p2_start_time = 0;
-unsigned long p2_time = 0;
+unsigned long clock_start_time[MAX_PLAYERS] = {0};
+unsigned long clock_time[MAX_PLAYERS] = {0};
 bool clockPaused = true;
 
 // ************************* CUSTOM CHARACTERS ******************************
@@ -629,11 +631,12 @@ void initializeDisplay() {
   }
   
   // Show boot message using line buffers
-  snprintf(line[0], LCD_COLS + 1, "ESP8266 Points");
-  snprintf(line[1], LCD_COLS + 1, "Counter v2.0");  
-  snprintf(line[2], LCD_COLS + 1, "Booting up...");
+  snprintf_P(line[0], LCD_COLS + 1, PSTR("ESP8266 Points"));
+  snprintf_P(line[1], LCD_COLS + 1, PSTR("Counter v2.0"));  
+  snprintf_P(line[2], LCD_COLS + 1, PSTR("Booting up..."));
+  snprintf_P(line[3], LCD_COLS + 1, PSTR(VERSION_STRING));
   printLines();
-  delay(1000);
+  delay(1500);
 }
 
 // ************************* WIFI INITIALIZATION ******************************
@@ -963,23 +966,33 @@ void updateClockDisplay() {
   
   // Update running timer for active player
   if (!clockPaused) {
-    if (activeAction_Clock == 1 && p1_start_time > 0) {
-      p1_time += (now - p1_start_time);
-      p1_start_time = now;
-    } else if (activeAction_Clock == 2 && p2_start_time > 0) {
-      p2_time += (now - p2_start_time);
-      p2_start_time = now;
-    }
+    clock_time[activeAction_Clock - 1] += (now - clock_start_time[activeAction_Clock - 1]);
+    clock_start_time[activeAction_Clock - 1] = now;
   }
   
   // Format time display
-  unsigned long totalTime = p1_time + p2_time;
+  unsigned long totalTime = clock_time[0] + clock_time[1] + clock_time[2] + clock_time[3];
+
+  char temp_buffer[4][9] = {0};
+
+  for (uint8_t i = 0; i < numPlayers; i++) {
+    snprintf(temp_buffer[i], 9, "P%1u %02lu:%02lu",
+             i+1, clock_time[i] / 60000, (clock_time[i] % 60000) / 1000);
+    // 1 and 2 go to line 1, 3 and 4 to line 2
+  }
+
+  // clear all lines first
+  for (uint8_t i = 0; i < LCD_ROWS; i++) {
+    snprintf(line[i], LCD_COLS + 1, "%*s", LCD_COLS, ""); // Fill with spaces
+  }
+
+  // Copy player time displays only for active players
+  if (numPlayers >= 1) memcpy(&line[1][0], temp_buffer[0], 8);
+  if (numPlayers >= 2) memcpy(&line[1][12], temp_buffer[1], 8);
+  if (numPlayers >= 3) memcpy(&line[2][0], temp_buffer[2], 8);
+  if (numPlayers >= 4) memcpy(&line[2][12], temp_buffer[3], 8);
   
   snprintf(line[0], LCD_COLS + 1, "       CLOCK        ");
-  snprintf(line[1], LCD_COLS + 1, "P1 %02lu:%02lu    P2 %02lu:%02lu",
-           p1_time / 60000, (p1_time % 60000) / 1000,
-           p2_time / 60000, (p2_time % 60000) / 1000);
-  snprintf(line[2], LCD_COLS + 1, "                    ");
   snprintf(line[3], LCD_COLS + 1, "    Total  %02lu:%02lu    ",
            totalTime / 60000, (totalTime % 60000) / 1000);
   
@@ -987,6 +1000,8 @@ void updateClockDisplay() {
   switch (activeAction_Clock) {
     case 1: line[1][8] = CHAR_LEFT_ARROW; break;
     case 2: line[1][11] = CHAR_RIGHT_ARROW; break;
+    case 3: line[2][8] = CHAR_LEFT_ARROW; break;
+    case 4: line[2][11] = CHAR_RIGHT_ARROW; break;
   }
   
   if (clockPaused) {
@@ -1169,7 +1184,7 @@ void handleWiFiScan() {
   json.reserve(512); // Pre-allocate memory
   json = "{\"status\":\"success\",\"networks\":[";
   
-  for (int i = 0; i < n && i < 20; ++i) { // Limit to 20 networks max
+  for (uint8_t i = 0; i < n && i < 20; ++i) { // Limit to 20 networks max
     if (i > 0) json += ",";
     json += "{\"ssid\":\"" + WiFi.SSID(i) + "\",\"rssi\":" + WiFi.RSSI(i) + "}";
     
@@ -1584,29 +1599,20 @@ void buttonChange() {
       // Accumulate time for current player before pausing/unpausing
       if (!clockPaused) {
         unsigned long now = millis();
-        if (activeAction_Clock == 1 && p1_start_time > 0) {
-          p1_time += (now - p1_start_time);
-        } else if (activeAction_Clock == 2 && p2_start_time > 0) {
-          p2_time += (now - p2_start_time);
-        }
+        clock_time[activeAction_Clock - 1] += (now - clock_start_time[activeAction_Clock - 1]);
       }
       
       clockPaused = !clockPaused;
+
+      clock_start_time[0] = 0;
+      clock_start_time[1] = 0;
+      clock_start_time[2] = 0;
+      clock_start_time[3] = 0;
       
       if (!clockPaused) {
         // Resume: set start time for active player
         unsigned long now = millis();
-        if (activeAction_Clock == 1) {
-          p1_start_time = now;
-          p2_start_time = 0;
-        } else if (activeAction_Clock == 2) {
-          p2_start_time = now;
-          p1_start_time = 0;
-        }
-      } else {
-        // Pause: clear start times
-        p1_start_time = 0;
-        p2_start_time = 0;
+        clock_start_time[activeAction_Clock - 1] = now;
       }
       break;
       
@@ -1713,29 +1719,20 @@ void buttonPlus() {
       // Accumulate time for current player before switching
       if (!clockPaused) {
         unsigned long now = millis();
-        if (activeAction_Clock == 1 && p1_start_time > 0) {
-          p1_time += (now - p1_start_time);
-        } else if (activeAction_Clock == 2 && p2_start_time > 0) {
-          p2_time += (now - p2_start_time);
-        }
+        clock_time[activeAction_Clock - 1] += (now - clock_start_time[activeAction_Clock - 1]);
       }
       
       activeAction_Clock++;
-      if (activeAction_Clock > 2) activeAction_Clock = 1;
+      if (activeAction_Clock > numPlayers) activeAction_Clock = 1;
       
       // Set new start time for the newly active player
+      clock_start_time[0] = 0;
+      clock_start_time[1] = 0;
+      clock_start_time[2] = 0;
+      clock_start_time[3] = 0;
       if (!clockPaused) {
         unsigned long now = millis();
-        if (activeAction_Clock == 1) {
-          p1_start_time = now;
-          p2_start_time = 0;
-        } else if (activeAction_Clock == 2) {
-          p2_start_time = now;
-          p1_start_time = 0;
-        }
-      } else {
-        p1_start_time = 0;
-        p2_start_time = 0;
+        clock_start_time[activeAction_Clock - 1] = now;
       }
       break;
       
@@ -1769,29 +1766,20 @@ void buttonMinus() {
       // Accumulate time for current player before switching
       if (!clockPaused) {
         unsigned long now = millis();
-        if (activeAction_Clock == 1 && p1_start_time > 0) {
-          p1_time += (now - p1_start_time);
-        } else if (activeAction_Clock == 2 && p2_start_time > 0) {
-          p2_time += (now - p2_start_time);
-        }
+        clock_time[activeAction_Clock - 1] += (now - clock_start_time[activeAction_Clock - 1]);
       }
       
       activeAction_Clock++;
-      if (activeAction_Clock > 2) activeAction_Clock = 1;
+      if (activeAction_Clock > numPlayers) activeAction_Clock = 1;
       
       // Set new start time for the newly active player
+      clock_start_time[0] = 0;
+      clock_start_time[1] = 0;
+      clock_start_time[2] = 0;
+      clock_start_time[3] = 0;
       if (!clockPaused) {
         unsigned long now = millis();
-        if (activeAction_Clock == 1) {
-          p1_start_time = now;
-          p2_start_time = 0;
-        } else if (activeAction_Clock == 2) {
-          p2_start_time = now;
-          p1_start_time = 0;
-        }
-      } else {
-        p1_start_time = 0;
-        p2_start_time = 0;
+        clock_start_time[activeAction_Clock - 1] = now;
       }
       break;
       
@@ -1808,10 +1796,14 @@ void buttonOption() {
       
     case STATE_CLOCK:
       // Reset clock
-      p1_start_time = 0;
-      p1_time = 0;
-      p2_start_time = 0;
-      p2_time = 0;
+      clock_start_time[0] = 0;
+      clock_start_time[1] = 0;
+      clock_start_time[2] = 0;
+      clock_start_time[3] = 0;
+      clock_time[0] = 0;
+      clock_time[1] = 0;
+      clock_time[2] = 0;
+      clock_time[3] = 0;
       clockPaused = true;
       activeAction_Clock = 1;
       break;
@@ -1839,7 +1831,7 @@ void initializeOTA() {
     snprintf(line[0], LCD_COLS + 1, "**** OTA Update ****");
     snprintf(line[1], LCD_COLS + 1, " Update in progress ");
     snprintf(line[2], LCD_COLS + 1, "    Please wait...  ");
-    snprintf(line[3], LCD_COLS + 1, "********************");
+    snprintf(line[3], LCD_COLS + 1, "                    ");
     printLines();
   });
 
@@ -1866,6 +1858,10 @@ void initializeOTA() {
       line[3][i] = ' ';
     }
     line[3][LCD_COLS] = '\0';
+    // in position 8-12 show percentage (5 chars: "100% " or " 50% ")
+    char percentStr[5];
+    sprintf(percentStr, "%3u%%", (progress / (total / 100)));
+    memcpy(&line[3][8], percentStr, 4);  // Copy only 4 chars, no null terminator
     printLines();
   });
 
