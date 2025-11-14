@@ -331,19 +331,19 @@ loadNetworks();
 // ************************* FUNCTION PROTOTYPES ******************************
 
 // Setup functions
-void ICACHE_FLASH_ATTR initializeHardware();
-void ICACHE_FLASH_ATTR initializeDisplay();
-void ICACHE_FLASH_ATTR initializeWiFi();
-void ICACHE_FLASH_ATTR setupWebServer();
-void ICACHE_FLASH_ATTR setupTelnetServer();
+void initializeHardware();
+void initializeDisplay();
+void initializeWiFi();
+void setupWebServer();
+void setupTelnetServer();
 
 // Telnet handling
-void ICACHE_FLASH_ATTR handleTelnetClients();
-void ICACHE_FLASH_ATTR processTelnetCommand(String command, WiFiClient& client);
-void ICACHE_FLASH_ATTR telnetPrint(const String& message);
-void ICACHE_FLASH_ATTR telnetPrintln(const String& message);
-void ICACHE_FLASH_ATTR showTelnetHelp(WiFiClient& client);
-void ICACHE_FLASH_ATTR showTelnetStatus(WiFiClient& client);
+void handleTelnetClients();
+void processTelnetCommand(String command, WiFiClient& client);
+void telnetPrint(const String& message);
+void telnetPrintln(const String& message);
+void showTelnetHelp(WiFiClient& client);
+void showTelnetStatus(WiFiClient& client);
 
 // Button handling
 void buttonManagement();
@@ -358,14 +358,14 @@ void updateClockDisplay();
 void clearDisplay();
 
 // Data management
-void ICACHE_FLASH_ATTR saveData();
-void ICACHE_FLASH_ATTR loadData();
-bool ICACHE_FLASH_ATTR validateEEPROMData();
-void ICACHE_FLASH_ATTR saveWiFiConfig();
-void ICACHE_FLASH_ATTR loadWiFiConfig();
-bool ICACHE_FLASH_ATTR validateWiFiEEPROMData();
-int ICACHE_FLASH_ATTR addWiFiNetwork(const String& ssid, const String& password);
-void ICACHE_FLASH_ATTR deleteWiFiNetwork(uint8_t index);
+void saveData();
+void loadData();
+bool validateEEPROMData();
+void saveWiFiConfig();
+void loadWiFiConfig();
+bool validateWiFiEEPROMData();
+int addWiFiNetwork(const String& ssid, const String& password);
+void deleteWiFiNetwork(uint8_t index);
 
 // Web handlers
 void handleRoot();
@@ -386,17 +386,17 @@ void buttonMinus();
 void buttonOption();
 
 // Set button debounce time
-void ICACHE_FLASH_ATTR initializeButtonDebounce();
+void initializeButtonDebounce();
 
 // OTA
-void ICACHE_FLASH_ATTR initializeOTA();
+void initializeOTA();
 
 // Utility functions
-void ICACHE_FLASH_ATTR resetPlayerPoints(uint8_t startingPoints);
+void resetPlayerPoints(uint8_t startingPoints);
 
 // ************************* UTILITY FUNCTIONS ******************************
 
-void ICACHE_FLASH_ATTR resetPlayerPoints(uint8_t startingPoints) {
+void resetPlayerPoints(uint8_t startingPoints) {
   for (uint8_t i = 0; i < MAX_PLAYERS; i++) {
     playerPoints[i][0] = startingPoints;
     for (uint8_t j = 1; j < MAX_PLAYERS; j++) {
@@ -407,7 +407,7 @@ void ICACHE_FLASH_ATTR resetPlayerPoints(uint8_t startingPoints) {
 
 // ************************* DATA MANAGEMENT ******************************
 
-void ICACHE_FLASH_ATTR saveData() {
+void saveData() {
   uint16_t addr = 0;
   char nameBuffer[NAME_LENGTH + 1];
 
@@ -438,7 +438,7 @@ void ICACHE_FLASH_ATTR saveData() {
   Serial.println(F("Data saved to EEPROM!"));
 }
 
-void ICACHE_FLASH_ATTR loadData() {
+void loadData() {
   if (!validateEEPROMData()) {
     Serial.println(F("Invalid EEPROM data, using defaults"));
     return;
@@ -474,13 +474,13 @@ void ICACHE_FLASH_ATTR loadData() {
   Serial.println(F("Data loaded from EEPROM!"));
 }
 
-bool ICACHE_FLASH_ATTR validateEEPROMData() {
+bool validateEEPROMData() {
   uint16_t magic;
   EEPROM.get(0, magic);
   return magic == 0xFEDE;
 }
 
-void ICACHE_FLASH_ATTR saveWiFiConfig() {
+void saveWiFiConfig() {
   uint16_t addr = WIFI_EEPROM_START;
   
   // Save magic number for WiFi validation
@@ -502,7 +502,7 @@ void ICACHE_FLASH_ATTR saveWiFiConfig() {
   Serial.println(F("WiFi config saved to EEPROM!"));
 }
 
-void ICACHE_FLASH_ATTR loadWiFiConfig() {
+void loadWiFiConfig() {
   if (!validateWiFiEEPROMData()) {
     Serial.println(F("Invalid WiFi EEPROM data, using defaults"));
     numWifiConfigs = 0;
@@ -530,13 +530,13 @@ void ICACHE_FLASH_ATTR loadWiFiConfig() {
   Serial.println(numWifiConfigs);
 }
 
-bool ICACHE_FLASH_ATTR validateWiFiEEPROMData() {
+bool validateWiFiEEPROMData() {
   uint16_t wifiMagic;
   EEPROM.get(WIFI_EEPROM_START, wifiMagic);
   return wifiMagic == 0xC0DE;
 }
 
-int ICACHE_FLASH_ATTR addWiFiNetwork(const String& ssid, const String& password) {
+int addWiFiNetwork(const String& ssid, const String& password) {
   if (numWifiConfigs >= MAX_WIFI_NETWORKS) {
     Serial.println(F("Maximum WiFi networks reached"));
     return 1;
@@ -568,7 +568,7 @@ int ICACHE_FLASH_ATTR addWiFiNetwork(const String& ssid, const String& password)
   return 0;
 }
 
-void ICACHE_FLASH_ATTR deleteWiFiNetwork(uint8_t index) {
+void deleteWiFiNetwork(uint8_t index) {
   if (index >= numWifiConfigs) {
     Serial.println(F("Invalid WiFi network index"));
     return;
@@ -590,7 +590,7 @@ void ICACHE_FLASH_ATTR deleteWiFiNetwork(uint8_t index) {
 
 // ************************* HARDWARE INITIALIZATION ******************************
 
-void ICACHE_FLASH_ATTR initializeHardware() {
+void initializeHardware() {
   // Initialize LED
   pinMode(LED_BUILTIN, OUTPUT);
   LED_OFF;
@@ -608,7 +608,7 @@ void ICACHE_FLASH_ATTR initializeHardware() {
   Serial.println(F("\nESP8266 Points Counter Starting..."));
 }
 
-void ICACHE_FLASH_ATTR initializeDisplay() {
+void initializeDisplay() {
   lcd.init();
   lcd.backlight();
   
@@ -638,7 +638,7 @@ void ICACHE_FLASH_ATTR initializeDisplay() {
 
 // ************************* WIFI INITIALIZATION ******************************
 
-void ICACHE_FLASH_ATTR initializeWiFi() {
+void initializeWiFi() {
   Serial.println(F("WiFi Connecting..."));
   
   // Load WiFi configuration from EEPROM
@@ -757,7 +757,7 @@ void ICACHE_FLASH_ATTR initializeWiFi() {
   }
 }
 
-void ICACHE_FLASH_ATTR setupWebServer() {
+void setupWebServer() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/update", HTTP_POST, handleGameSet);
   server.on("/wifi", HTTP_GET, handleWiFiConfig);
@@ -774,7 +774,7 @@ void ICACHE_FLASH_ATTR setupWebServer() {
 
 // ************************* TELNET SERVER SETUP ******************************
 
-void ICACHE_FLASH_ATTR setupTelnetServer() {
+void setupTelnetServer() {
   telnetServer.begin();
   telnetServer.setNoDelay(true);
   
@@ -832,7 +832,7 @@ void buttonManagement() {
   }
 }
 
-void ICACHE_FLASH_ATTR initializeButtonDebounce() {
+void initializeButtonDebounce() {
   uint16_t debounceMagic;
   EEPROM.get(234, debounceMagic);
   if (debounceMagic != 0xDBC0) {
@@ -1185,7 +1185,7 @@ void handleWiFiScan() {
 
 // ************************* TELNET HANDLERS ******************************
 
-void ICACHE_FLASH_ATTR handleTelnetClients() {
+void handleTelnetClients() {
   // Check for new clients
   if (telnetServer.hasClient()) {
     // Find a free slot for the new client
@@ -1247,7 +1247,7 @@ void ICACHE_FLASH_ATTR handleTelnetClients() {
   }
 }
 
-void ICACHE_FLASH_ATTR processTelnetCommand(String command, WiFiClient& client) {
+void processTelnetCommand(String command, WiFiClient& client) {
   command.toLowerCase();
   
   if (command == "help") {
@@ -1474,7 +1474,7 @@ void ICACHE_FLASH_ATTR processTelnetCommand(String command, WiFiClient& client) 
   }
 }
 
-void ICACHE_FLASH_ATTR showTelnetHelp(WiFiClient& client) {
+void showTelnetHelp(WiFiClient& client) {
   client.println(F("Available Commands:"));
   client.println(F("=================="));
   client.println(F("help                      - Show this help"));
@@ -1503,7 +1503,7 @@ void ICACHE_FLASH_ATTR showTelnetHelp(WiFiClient& client) {
   client.println(F("quit/exit                 - Close Telnet connection"));
 }
 
-void ICACHE_FLASH_ATTR showTelnetStatus(WiFiClient& client) {
+void showTelnetStatus(WiFiClient& client) {
   client.println(F("System Status:"));
   client.println(F("=============="));
   
@@ -1543,7 +1543,7 @@ void ICACHE_FLASH_ATTR showTelnetStatus(WiFiClient& client) {
   }
 }
 
-void ICACHE_FLASH_ATTR telnetPrint(const String& message) {
+void telnetPrint(const String& message) {
   for (uint8_t i = 0; i < TELNET_MAX_CLIENTS; i++) {
     if (telnetClients[i] && telnetClients[i].connected()) {
       telnetClients[i].print(message);
@@ -1551,7 +1551,7 @@ void ICACHE_FLASH_ATTR telnetPrint(const String& message) {
   }
 }
 
-void ICACHE_FLASH_ATTR telnetPrintln(const String& message) {
+void telnetPrintln(const String& message) {
   for (uint8_t i = 0; i < TELNET_MAX_CLIENTS; i++) {
     if (telnetClients[i] && telnetClients[i].connected()) {
       telnetClients[i].println(message);
@@ -1823,7 +1823,7 @@ void buttonOption() {
 
 // *********************** OTA SETUP ****************************
 
-void ICACHE_FLASH_ATTR initializeOTA() {
+void initializeOTA() {
     // Impostazioni base OTA
   ArduinoOTA.setHostname("MagicPoints");
   ArduinoOTA.setPassword("1234");
